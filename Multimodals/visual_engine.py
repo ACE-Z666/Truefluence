@@ -6,18 +6,22 @@ import numpy as np
 import random
 import os
 
-class VisualDeepfakeDetector(nn.Module):
+class VisualQualityHead(nn.Module):
     """
-    Visual Engine for TrueFluence.
+    Visual Quality Engine for TrueFluence.
+    
+    Role: Analyzes the production quality of the video.
+    Input: Video Frames (Images)
+    Output: Quality Score (0 = Low Effort/Scammy, 1 = Professional/Credible)
     
     Architecture:
-    1. Backbone: MobileNetV2 (Frozen) -> Converts Image to 1280-dim Vector.
-    2. Head: Custom MLP (Trainable) -> Converts Vector to Credibility Score.
+    1. Backbone: MobileNetV2 (Frozen) -> Extracts visual features (lighting, texture, composition).
+    2. Head: Custom MLP (Trainable) -> Decides if the features look "Scammy" or "Professional".
     """
     def __init__(self):
-        super(VisualDeepfakeDetector, self).__init__()
+        super(VisualQualityHead, self).__init__()
         
-        print("Initializing Visual Engine...")
+        print("Initializing Visual Quality Engine...")
         print("1. Loading MobileNetV2 Backbone (ImageNet Weights)...")
         
         # Load standard MobileNetV2 with ImageNet weights
@@ -33,21 +37,26 @@ class VisualDeepfakeDetector(nn.Module):
         for param in self.backbone.parameters():
             param.requires_grad = False
             
-        # --- PART 2: THE CREDIBILITY HEAD (Trainable) ---
+        # --- PART 2: THE QUALITY ASSESSMENT HEAD (Trainable) ---
         # MobileNetV2 outputs 1280 channels
-        print("2. Initializing Custom Credibility Head...")
+        print("2. Initializing Custom Quality Assessment Head...")
         self.head = nn.Sequential(
-            nn.Dropout(p=0.2),
-            nn.Linear(1280, 256),      # Compress vector
+            nn.Dropout(p=0.3),                 # Increased dropout to prevent overfitting on small data
+            nn.Linear(1280, 512),              # Compress vector
             nn.ReLU(),
-            nn.Dropout(p=0.2),
-            nn.Linear(256, 1),         # Output single score
-            nn.Sigmoid()               # Normalize to 0-1 (Probability)
+            nn.BatchNorm1d(512),               # Normalize for training stability
+            nn.Dropout(p=0.3),
+            nn.Linear(512, 128),
+            nn.ReLU(),
+            nn.Linear(128, 1)                  # Output single raw score
+            # Note: We removed Sigmoid here if using BCEWithLogitsLoss later, 
+            # but if you need a score 0-1 directly, uncomment the line below:
+            # , nn.Sigmoid() 
         )
 
     def forward(self, x):
         """
-        Full pass: Image -> Vector -> Score
+        Full pass: Image -> Vector -> Quality Score
         """
         # 1. Extract Features (Get the vector)
         # Output shape: (Batch, 1280, 7, 7)
@@ -58,13 +67,13 @@ class VisualDeepfakeDetector(nn.Module):
         x = nn.functional.adaptive_avg_pool2d(features, (1, 1))
         vector = torch.flatten(x, 1)
         
-        # 2. Calculate Score
+        # 2. Calculate Quality Score
         score = self.head(vector)
         return score
     
     def get_vector(self, x):
         """
-        Helper: Just get the vector representation of the image (for debugging or analysis).
+        Helper: Just get the vector representation of the image.
         """
         with torch.no_grad():
             features = self.backbone(x)
@@ -74,22 +83,21 @@ class VisualDeepfakeDetector(nn.Module):
     def save_head_weights(self, path):
         """Save only the trained head weights (small file size)."""
         torch.save(self.head.state_dict(), path)
+        print(f"Saved Quality Head weights to {path}")
         
     def load_head_weights(self, path):
         """Load trained head weights."""
         if os.path.exists(path):
             self.head.load_state_dict(torch.load(path))
-            print(f"Loaded trained head from {path}")
+            print(f"Loaded Quality Head from {path}")
         else:
             print("No trained head found. Using random initialization.")
 
-def extract_frames(video_path, num_frames=10, resize_dim=(224, 224)):
+def extract_quality_frames(video_path, num_frames=10, resize_dim=(224, 224)):
     """
-    Extracts frames and prepares them for MobileNetV2.
-    
-    Changes from MesoNet:
-    1. Resize to 224x224 (Standard for MobileNet).
-    2. Normalize using ImageNet Mean/Std (Required for pre-trained weights).
+    Extracts frames and prepares them for MobileNetV2 analysis.
+    Checks if video can be opened and extracts evenly spaced frames to get a
+    good overview of the whole video's quality.
     """
     cap = cv2.VideoCapture(video_path)
     
@@ -100,7 +108,7 @@ def extract_frames(video_path, num_frames=10, resize_dim=(224, 224)):
     
     # --- Frame Selection Logic ---
     if total_frames <= 0:
-        # Fallback for streams
+        # Fallback for streams or corrupted headers
         frames = []
         while True:
             ret, frame = cap.read()
@@ -110,15 +118,15 @@ def extract_frames(video_path, num_frames=10, resize_dim=(224, 224)):
         
         if not frames: raise ValueError(f"No frames in {video_path}")
         
+        # Random sample if we can't seek
         indices = sorted(random.sample(range(len(frames)), min(num_frames, len(frames))))
         # Pad if needed
         while len(indices) < num_frames: indices.append(random.choice(indices))
         selected_frames = [frames[i] for i in sorted(indices)]
     else:
-        # Efficient seeking
-        indices = sorted(random.sample(range(total_frames), min(num_frames, total_frames)))
-        while len(indices) < num_frames: indices.append(random.choice(indices))
-        indices.sort()
+        # Smart seeking: Get frames evenly distributed across the video
+        # to judge quality of the START, MIDDLE, and END.
+        indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
         
         selected_frames = []
         for idx in indices:
@@ -126,6 +134,7 @@ def extract_frames(video_path, num_frames=10, resize_dim=(224, 224)):
             ret, frame = cap.read()
             if ret: selected_frames.append(frame)
             else: 
+                # If read fails, duplicate last frame
                 if selected_frames: selected_frames.append(selected_frames[-1])
         cap.release()
 
@@ -136,7 +145,9 @@ def extract_frames(video_path, num_frames=10, resize_dim=(224, 224)):
 
     processed_frames = []
     for frame in selected_frames:
-        # 1. Resize to 224x224
+        if frame is None: continue
+        
+        # 1. Resize to 224x224 (MobileNet Requirement)
         frame = cv2.resize(frame, resize_dim)
         
         # 2. Convert BGR to RGB
@@ -145,10 +156,10 @@ def extract_frames(video_path, num_frames=10, resize_dim=(224, 224)):
         # 3. Normalize to [0, 1]
         frame = frame.astype(np.float32) / 255.0
         
-        # 4. Normalize with ImageNet stats (Important for MobileNet!)
+        # 4. Normalize with ImageNet stats
         frame = (frame - mean) / std
         
-        # 5. Transpose to (Channels, Height, Width)
+        # 5. Transpose to (Channels, Height, Width) -> PyTorch format
         frame = np.transpose(frame, (2, 0, 1))
         
         processed_frames.append(frame)
@@ -156,6 +167,7 @@ def extract_frames(video_path, num_frames=10, resize_dim=(224, 224)):
     if not processed_frames:
          raise ValueError(f"Failed to extract frames from {video_path}")
 
+    # Convert list of arrays to a single Batch Tensor: (Batch_Size, 3, 224, 224)
     tensor_frames = torch.tensor(np.array(processed_frames), dtype=torch.float32)
     
     return tensor_frames
