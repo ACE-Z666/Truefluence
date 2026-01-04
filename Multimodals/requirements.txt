@@ -1,0 +1,8 @@
+torch
+opencv-python
+moviepy
+scikit-learn
+pandas
+numpy
+librosa
+torchaudio
