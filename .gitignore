@@ -134,3 +134,19 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# --- Python & ML Ignores ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.ipynb_checkpoints/
+.pytest_cache/
+*.pth
+*.pt
+
+# --- Dataset & Large Context ---
+Multimodals/dataset/
+
+

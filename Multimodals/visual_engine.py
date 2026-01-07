@@ -48,10 +48,8 @@ class VisualQualityHead(nn.Module):
             nn.Dropout(p=0.3),
             nn.Linear(512, 128),
             nn.ReLU(),
-            nn.Linear(128, 1)                  # Output single raw score
-            # Note: We removed Sigmoid here if using BCEWithLogitsLoss later, 
-            # but if you need a score 0-1 directly, uncomment the line below:
-            # , nn.Sigmoid() 
+            nn.Linear(128, 1),                 # Output single raw score
+            nn.Sigmoid()                       # Output: 0.0 (Scam) to 1.0 (Credible)
         )
 
     def forward(self, x):
