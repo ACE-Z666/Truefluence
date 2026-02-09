@@ -1,11 +1,11 @@
 torch
+torchvision
+torchaudio
 opencv-python
 moviepy
 scikit-learn
 pandas
 numpy
 librosa
-torchaudio
 scipy
-torchvision
-pickle5
+tqdm

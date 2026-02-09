@@ -544,6 +544,50 @@ class AdvancedAudioAnalyzer:
         ])  # Total: 135 dimensions
         
         return combined_features
+
+# Main integrated audio analysis function
+def analyze_audio_complete(video_path, device='cpu'):
+    """
+    Complete audio analysis for integration with visual system.
+    
+    Args:
+        video_path (str): Path to video file
+        device (str): Device to use ('cpu' or 'cuda')
+        
+    Returns:
+        dict: Comprehensive audio analysis results
+    """
+    try:
+        analyzer = AdvancedAudioAnalyzer(device)
+        
+        # Get comprehensive features
+        audio_features = analyzer.get_comprehensive_audio_features(video_path)
+        
+        # Voice authenticity analysis
+        voice_analysis = analyzer.analyze_voice_authenticity(video_path)
+        
+        # Emotional pattern analysis
+        emotion_analysis = analyzer.analyze_emotional_patterns(video_path)
+        
+        return {
+            'audio_features': audio_features,
+            'voice_analysis': voice_analysis,
+            'emotion_analysis': emotion_analysis,
+            'overall_audio_score': voice_analysis['authenticity_score'],
+            'is_likely_synthetic': voice_analysis['is_likely_synthetic'],
+            'is_likely_scripted': emotion_analysis['is_likely_scripted']
+        }
+        
+    except Exception as e:
+        print(f"Error in audio analysis: {e}")
+        return {
+            'audio_features': np.zeros(135),
+            'voice_analysis': {'authenticity_score': 0.5, 'voice_consistency': 0.5, 'pitch_stability': 0.5, 'is_likely_synthetic': False},
+            'emotion_analysis': {'emotional_authenticity': 0.5, 'energy_variation': 0.5, 'pitch_variation': 0.5, 'speech_naturalness': 0.5, 'is_likely_scripted': False},
+            'overall_audio_score': 0.5,
+            'is_likely_synthetic': False,
+            'is_likely_scripted': False
+        }
         with open(path, 'rb') as f:
             self.classifier = pickle.load(f)
         self.is_trained = True
