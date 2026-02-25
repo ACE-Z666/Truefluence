@@ -230,4 +230,4 @@ if __name__ == "__main__":
     print()
     
     train_multimodal_system()
-    simple_training()
+    
