@@ -55,16 +55,30 @@ class VisualQualityHead(nn.Module):
         
         # --- PART 3: TEMPORAL ANALYSIS COMPONENTS ---
         print("3. Initializing Temporal Analysis...")
-        self.temporal_lstm = nn.LSTM(1280, 256, batch_first=True, bidirectional=True)
-        self.temporal_attention = nn.MultiheadAttention(512, num_heads=8, batch_first=True)
+        self.temporal_lstm = nn.LSTM(
+            input_size    = 1280,
+            hidden_size   = 256,
+            num_layers    = 2,
+            batch_first   = True,
+            bidirectional = True,       # output dim = 256 × 2 = 512
+            dropout       = 0.3
+        )
+
+        # ── Temporal Attention ─────────────────────────────────────
+        # Input must match LSTM output = 512 (bidirectional)
+        self.temporal_attention = nn.Sequential(
+            nn.Linear(512, 128),        # ← 512 not 256
+            nn.Tanh(),
+            nn.Linear(128, 1)
+        )
+
+        # ── Temporal Classifier ────────────────────────────────────
+        # Input must match LSTM output = 512 (bidirectional)
         self.temporal_classifier = nn.Sequential(
-            nn.Linear(512, 128),
+            nn.Linear(512, 128),        # ← 512 not 256
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 1),
-            nn.Sigmoid()
+            nn.Linear(128, 1)
         )
         
         # --- PART 4: MULTIMODAL FUSION NETWORK ---
@@ -94,36 +108,50 @@ class VisualQualityHead(nn.Module):
         score = self.head(vector)
         return score
     
-    def forward_temporal(self, video_frames):
+    def forward_temporal(self, frames_batch):
         """
-        Temporal analysis for video sequences.
+        Temporal LSTM + Attention forward pass.
+
         Args:
-            video_frames: Tensor of shape (batch_size, num_frames, channels, height, width)
+            frames_batch: (B, N, 3, 224, 224)
+
+        Returns:
+            score: (B, 1) sigmoid probability
         """
-        batch_size, num_frames = video_frames.shape[0], video_frames.shape[1]
-        
-        # Extract features from all frames
-        frame_features = []
-        for i in range(num_frames):
-            frame = video_frames[:, i]
-            features = self.get_vector(frame)
-            frame_features.append(features)
-        
-        # Stack features: (batch_size, num_frames, 1280)
-        sequence_features = torch.stack(frame_features, dim=1)
-        
-        # Temporal encoding with LSTM
-        lstm_out, _ = self.temporal_lstm(sequence_features)
-        
-        # Attention mechanism
-        attended_features, _ = self.temporal_attention(lstm_out, lstm_out, lstm_out)
-        
-        # Aggregate temporal features (mean pooling)
-        temporal_summary = torch.mean(attended_features, dim=1)
-        
-        # Final temporal classification
-        temporal_score = self.temporal_classifier(temporal_summary)
-        return temporal_score
+        B, N, C, H, W = frames_batch.shape
+
+        # (B, N, C, H, W) → (B*N, C, H, W)
+        x = frames_batch.view(B * N, C, H, W)
+
+        # Backbone (frozen)
+        with torch.no_grad():
+            feats  = self.backbone(x)
+            pooled = nn.functional.adaptive_avg_pool2d(feats, (1, 1))
+            vecs   = torch.flatten(pooled, 1)                   # (B*N, 1280)
+
+        # (B*N, 1280) → (B, N, 1280)
+        vecs = vecs.view(B, N, -1)                              # (B, N, 1280)
+
+        # LSTM
+        # Input:  (B, N, 1280)
+        # Output: (B, N, 512)  ← 256 hidden × 2 directions
+        lstm_out, _ = self.temporal_lstm(vecs)                  # (B, N, 512)
+
+        # Attention
+        # Input:  (B, N, 512)
+        # Output: (B, N, 1)
+        attn_scores  = self.temporal_attention(lstm_out)        # (B, N, 1)
+        attn_weights = torch.softmax(attn_scores, dim=1)        # (B, N, 1)
+
+        # Weighted sum across frames
+        # (B, N, 512) × (B, N, 1) → sum → (B, 512)
+        context = (lstm_out * attn_weights).sum(dim=1)          # (B, 512)
+
+        # Classifier
+        score = self.temporal_classifier(context)               # (B, 1)
+        score = torch.sigmoid(score)                            # (B, 1)
+
+        return score
     
     def forward_fusion(self, visual_features, audio_features):
         """
@@ -475,72 +503,45 @@ class VisualQualityHead(nn.Module):
             'compositing_likelihood': 1.0 - np.mean(consistency_scores)
         }
 
+    def extract_frame_features_enhanced(self, frame_tensor):
+        """
+        Extract combined features per frame:
+        MobileNetV2 + lighting + background folded into one vector
+        """
+        # 1. MobileNetV2 backbone features
+        backbone_features = self.backbone(frame_tensor)  # (1280,)
+        
+        # 2. Lighting features (folded in)
+        frame_np = frame_tensor.permute(1,2,0).cpu().numpy()
+        luminance = (0.299 * frame_np[:,:,0] + 
+                 0.587 * frame_np[:,:,1] + 
+                 0.114 * frame_np[:,:,2])
+        
+        lighting_feats = torch.tensor([
+            luminance.mean(),   # absolute brightness
+            luminance.std(),    # contrast level
+        ])  # (2,)
+        
+        # 3. Background corner features (folded in)
+        h, w = frame_np.shape[:2]
+        corners = [
+            frame_np[:30,  :30 ].mean(axis=(0,1)),   # TL
+            frame_np[:30,  -30:].mean(axis=(0,1)),   # TR
+            frame_np[-30:, :30 ].mean(axis=(0,1)),   # BL
+            frame_np[-30:, -30:].mean(axis=(0,1)),   # BR
+        ]
+        corner_feats = torch.tensor(
+            np.concatenate(corners)
+        ).float()  # (12,)
+        
+        # 4. Combine everything into single frame vector
+        combined = torch.cat([
+            backbone_features,   # 1280
+            lighting_feats,      #    2
+            corner_feats         #   12
+        ])  # Total: 1294-dim per frame
     
-    def detect_face_regions(self, frame):
-        """Simple face detection using color and texture analysis."""
-        # Convert tensor to numpy for OpenCV
-        if isinstance(frame, torch.Tensor):
-            if len(frame.shape) == 4:  # Batch
-                frame = frame[0]
-            # Denormalize and convert to uint8
-            frame = frame.permute(1, 2, 0).cpu().numpy()
-            frame = ((frame * np.array([0.229, 0.224, 0.225]) + np.array([0.485, 0.456, 0.406])) * 255).astype(np.uint8)
-        
-        # Simple skin color detection (approximation)
-        hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
-        
-        # Define skin color range in HSV
-        lower_skin = np.array([0, 20, 70], dtype=np.uint8)
-        upper_skin = np.array([20, 255, 255], dtype=np.uint8)
-        
-        skin_mask = cv2.inRange(hsv, lower_skin, upper_skin)
-        skin_area = np.sum(skin_mask > 0) / (frame.shape[0] * frame.shape[1])
-        
-        return {
-            'has_face': skin_area > 0.02,  # At least 2% skin-colored pixels
-            'face_area_ratio': skin_area,
-            'skin_mask': skin_mask
-        }
-    
-    def analyze_background_consistency(self, frames):
-        """Analyze background consistency to detect compositing artifacts."""
-        background_features = []
-        
-        for frame in frames:
-            # Extract features from corners (likely background regions)
-            corners = {
-                'top_left': frame[..., :50, :50],
-                'top_right': frame[..., :50, -50:],
-                'bottom_left': frame[..., -50:, :50],
-                'bottom_right': frame[..., -50:, -50:]
-            }
-            
-            corner_features = {}
-            for corner_name, corner_region in corners.items():
-                corner_features[corner_name] = {
-                    'mean_color': torch.mean(corner_region, dim=(-2, -1)).cpu().numpy(),
-                    'texture_variance': torch.var(corner_region, dim=(-2, -1)).cpu().numpy()
-                }
-            
-            background_features.append(corner_features)
-        
-        # Calculate consistency across frames
-        consistency_scores = []
-        for corner_name in ['top_left', 'top_right', 'bottom_left', 'bottom_right']:
-            corner_means = [frame[corner_name]['mean_color'] for frame in background_features]
-            corner_variances = [frame[corner_name]['texture_variance'] for frame in background_features]
-            
-            # Calculate consistency
-            mean_consistency = 1.0 - np.std(corner_means, axis=0).mean() / (np.mean(corner_means, axis=0).mean() + 1e-6)
-            var_consistency = 1.0 - np.std(corner_variances, axis=0).mean() / (np.mean(corner_variances, axis=0).mean() + 1e-6)
-            
-            consistency_scores.append((mean_consistency + var_consistency) / 2)
-        
-        return {
-            'corner_consistency': np.mean(consistency_scores),
-            'background_stability': np.min(consistency_scores),
-            'compositing_likelihood': 1.0 - np.mean(consistency_scores)
-        }
+        return combined
 
     def analyze_temporal_consistency(self, video_frames):
         """
@@ -634,83 +635,6 @@ def create_complete_scam_detector(model_path=None, device='cpu'):
     return detector
 
 def extract_quality_frames(video_path, num_frames=10, resize_dim=(224, 224)):
-    """
-    Extracts frames and prepares them for MobileNetV2 analysis.
-    Checks if video can be opened and extracts evenly spaced frames to get a
-    good overview of the whole video's quality.
-    """
-    cap = cv2.VideoCapture(video_path)
-    
-    if not cap.isOpened():
-        raise ValueError(f"Could not open video file: {video_path}")
-        
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    
-    # --- Frame Selection Logic ---
-    if total_frames <= 0:
-        # Fallback for streams or corrupted headers
-        frames = []
-        while True:
-            ret, frame = cap.read()
-            if not ret: break
-            frames.append(frame)
-        cap.release()
-        
-        if not frames: raise ValueError(f"No frames in {video_path}")
-        
-        # Random sample if we can't seek
-        indices = sorted(random.sample(range(len(frames)), min(num_frames, len(frames))))
-        # Pad if needed
-        while len(indices) < num_frames: indices.append(random.choice(indices))
-        selected_frames = [frames[i] for i in sorted(indices)]
-    else:
-        # Smart seeking: Get frames evenly distributed across the video
-        # to judge quality of the START, MIDDLE, and END.
-        indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
-        
-        selected_frames = []
-        for idx in indices:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-            ret, frame = cap.read()
-            if ret: selected_frames.append(frame)
-            else: 
-                # If read fails, duplicate last frame
-                if selected_frames: selected_frames.append(selected_frames[-1])
-        cap.release()
-
-    # --- Preprocessing for MobileNetV2 ---
-    # Standard ImageNet normalization constants
-    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
-    std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-
-    processed_frames = []
-    for frame in selected_frames:
-        if frame is None: continue
-        
-        # 1. Resize to 224x224 (MobileNet Requirement)
-        frame = cv2.resize(frame, resize_dim)
-        
-        # 2. Convert BGR to RGB
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        
-        # 3. Normalize to [0, 1]
-        frame = frame.astype(np.float32) / 255.0
-        
-        # 4. Normalize with ImageNet stats
-        frame = (frame - mean) / std
-        
-        # 5. Transpose to (Channels, Height, Width) -> PyTorch format
-        frame = np.transpose(frame, (2, 0, 1))
-        
-        processed_frames.append(frame)
-        
-    if not processed_frames:
-         raise ValueError(f"Failed to extract frames from {video_path}")
-
-    # Convert list of arrays to a single Batch Tensor: (Batch_Size, 3, 224, 224)
-    tensor_frames = torch.tensor(np.array(processed_frames), dtype=torch.float32)
-    
-    return tensor_frames
     """
     Extracts frames and prepares them for MobileNetV2 analysis.
     Checks if video can be opened and extracts evenly spaced frames to get a

@@ -9,3 +9,7 @@ numpy
 librosa
 scipy
 tqdm
+resampy
+soundfile
+audioread
+numba

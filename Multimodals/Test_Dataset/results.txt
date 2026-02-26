@@ -1,0 +1,35 @@
+=================================================================
+  TRUEFLUENCE — MULTIMODAL SCAM DETECTION
+  Test Report
+  Generated : 2026-02-26 09:48:03
+=================================================================
+
+VIDEO 1: test_vid1.mp4
+-----------------------------------------------------------------
+  Visual Head Score    : 0.5005
+  Temporal LSTM Score  : 0.5331
+
+  Frame Scores:
+    Frame 01          : 0.4636
+    Frame 02          : 0.5312
+    Frame 03          : 0.3512
+    Frame 04          : 0.3499
+    Frame 05          : 0.3040
+    Frame 06          : 0.3758
+    Frame 07          : 0.8450
+    Frame 08          : 0.7128
+
+  Has Audio            : True
+  Audio Head Score     : 0.5419
+  Pause Pattern Score  : 0.5867
+  Consistency Score    : 0.5893
+  Fusion Score         : 0.5138
+
+  FINAL SCORE          : 0.5206
+  VERDICT              : UNCERTAIN (Borderline)
+  Processing Time      : 10.33s
+
+=================================================================
+  SUMMARY
+=================================================================
+  test_vid1.mp4                       0.5206  🟡 UNCERTAIN
