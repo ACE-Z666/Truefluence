@@ -1,7 +1,7 @@
 =================================================================
   TRUEFLUENCE — MULTIMODAL SCAM DETECTION
   Test Report
-  Generated : 2026-02-26 09:48:03
+  Generated : 2026-02-26 15:03:05
 =================================================================
 
 VIDEO 1: test_vid1.mp4
@@ -27,7 +27,7 @@ VIDEO 1: test_vid1.mp4
 
   FINAL SCORE          : 0.5206
   VERDICT              : UNCERTAIN (Borderline)
-  Processing Time      : 10.33s
+  Processing Time      : 14.75s
 
 =================================================================
   SUMMARY

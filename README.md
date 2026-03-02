@@ -1,264 +1,225 @@
-# Enhanced Multimodal Scam Detection System
+# TrueFluence — Multimodal Scam Detection System
 
-A sophisticated AI system that combines visual and audio analysis to detect scam videos with high accuracy using temporal analysis, voice authenticity detection, and advanced fusion techniques.
+An AI system that combines visual and audio analysis to detect scam videos using temporal analysis, voice feature extraction, and a phased fusion training strategy.
+
+---
 
 ## 🚀 Key Features
 
-### Enhanced Visual Analysis
-- **Temporal Consistency Analysis**: LSTM-based temporal patterns detection
-- **Face Region Detection**: Skin color analysis for face presence
-- **Lighting Consistency**: Professional vs amateur lighting detection
-- **Background Analysis**: Compositing and green screen artifact detection
-- **Cross-frame Correlation**: Detect editing artifacts and inconsistencies
+### Visual Analysis
+- **MobileNetV2 Backbone**: Frozen ImageNet-pretrained feature extraction (1280-dim)
+- **Quality Assessment Head**: Multi-layer MLP scoring production quality per frame
+- **Temporal LSTM**: Bidirectional 2-layer LSTM (hidden=256) over frame sequences
+- **Temporal Self-Attention**: Learns which frames are most important (visual only)
+- **Temporal Classifier**: Final LSTM → score pipeline
 
-### Advanced Audio Analysis
-- **Voice Authenticity Detection**: Jitter, shimmer, and pitch stability analysis
-- **Emotional Pattern Recognition**: Natural vs scripted speech detection
-- **Speech Rate Analysis**: Naturalness assessment
-- **Pause Pattern Analysis**: Authentic conversation flow detection
-- **VGGish Feature Extraction**: Deep audio embeddings for classification
+### Audio Analysis
+- **128-dim Feature Vector**: MFCCs (80) + Chroma (24) + Spectral (6) + RMS (2) + Tempo (1) + Mel Bands (15)
+- **Pause Pattern Analysis**: Voice authenticity via ffmpeg → wav → librosa pipeline
 
-### Multimodal Fusion Network
-- **Cross-Modal Attention**: Learn relationships between visual and audio cues
-- **Adaptive Feature Weighting**: Automatically balance modality importance
-- **Confidence Scoring**: Uncertainty quantification for reliable predictions
-- **Risk Assessment**: Multi-level risk categorization (Low/Medium/High)
+### Fusion
+- **MLP Fusion Network**: Concatenates visual (135-dim) + audio (135-dim) → 270-dim → dense layers → final score
+- **No-Audio Fallback**: Videos without audio use `audio_vector = zeros(130)` → score = 0.0
+- **Fusion is concatenation-based MLP**
+
+### Attention Clarification
+| Component | Type | Input |
+|---|---|---|
+| `temporal_attention` | Self-attention over time | Visual frames only |
+| `fusion_network` | MLP (concatenation) | Visual + Audio |
+
+---
 
 ## 📁 Project Structure
 
 ```
 Multimodals/
-├── visual_engine.py          # 🔥 ENHANCED: Integrated multimodal system with temporal & fusion
-├── audio_engine.py           # 🔥 ENHANCED: Advanced audio analysis and voice detection
-├── train_visual.py           # 🔥 ENHANCED: Training script with multimodal support
-├── test_visual.py            # 🔥 ENHANCED: Comprehensive testing and analysis
+├── visual_engine.py          # MobileNetV2 backbone, LSTM, attention, fusion
+├── audio_engine.py           # AudioFeatureExtractor + AdvancedAudioAnalyzer
+├── train.py                  # 4-phase sequential training orchestrator
+├── test.py                   # Inference pipeline + report generation
 ├── requirements.txt          # All dependencies
 ├── setup_project.py          # Project initialization
-├── download_pretrained.py    # Download pretrained models
 ├── dataset/
-│   ├── real_videos/         # Legitimate video samples
-│   ├── scam_videos/         # Scam video samples
-│   └── processed_frames/    # Cached frame extractions
+│   ├── real_videos/          # Legitimate video samples (label=1)
+│   ├── scam_videos/          # Scam video samples     (label=0)
+│   └── processed_frames/     # Cached frame extractions
 └── models/
-    └── weights/             # Saved model weights
+    └── weights/
+        ├── best_visual_head.pth      # Phase 1 best
+        ├── best_visual_temporal.pth  # Phase 2 best
+        ├── best_audio_head.pth       # Phase 3 best
+        ├── best_fusion.pth           # Phase 4 best
+        ├── best_model.pth            # Overall best (all components)
+        └── final_model.pth           # Final epoch snapshot
 ```
+
+---
 
 ## 🛠️ Installation
 
-1. **Clone and Setup Environment**
 ```bash
 cd Multimodals
 pip install -r requirements.txt
-```
-
-2. **Setup Project Structure**
-```bash
 python setup_project.py
 ```
 
-3. **Download Pretrained Models** (Optional)
-```bash
-python download_pretrained.py
+---
+
+## 📦 Requirements
+
+```
+torch, torchvision, torchaudio
+opencv-python
+scikit-learn
+pandas
+numpy
+librosa
+scipy
+tqdm
+imageio-ffmpeg
+resampy
+soundfile
+audioread
+numba
 ```
 
-4. **Add Training Data**
-   - Place legitimate videos in `dataset/real_videos/`
-   - Place scam videos in `dataset/scam_videos/`
+> ⚠️ `moviepy` is listed in `requirements.txt` but is **not used** in the current pipeline. All audio extraction uses `imageio-ffmpeg` directly.
+
+---
 
 ## 🎯 Usage
 
-### Quick Analysis
+### Training
+
 ```bash
-# Simple analysis
-python test_visual.py path/to/video.mp4
-
-# Enhanced feature testing  
-python test_visual.py path/to/video.mp4 --enhanced
+python train.py
 ```
 
-### Programmatic Usage
-```python
-from visual_engine import analyze_video_quick, VisualQualityHead
+Place videos before running:
+- Real videos → `dataset/real_videos/`
+- Scam videos → `dataset/scam_videos/`
 
-# Quick analysis - INTEGRATED ENHANCED FUNCTION
-result = analyze_video_quick('video.mp4')
-print(f"Credibility Score: {result['overall_score']:.4f}")
-print(f"Verdict: {result['verdict']}")
+Supported formats: `.mp4`, `.avi`, `.mov`, `.mkv`
 
-# Detailed analysis with enhanced model
-model = VisualQualityHead()
-model.load_head_weights('models/weights/enhanced_visual_model.pth')
-detailed_result = model.analyze_video_complete('video.mp4')
-```
+### Testing
 
-### Training the System
 ```bash
-# Multimodal training with enhanced features
-python train_visual.py
+python test.py
 ```
 
-## 📊 Analysis Output
+Results saved to:
+- `Test_Dataset/results.txt`
+- `Test_Dataset/results.json`
 
-The enhanced system provides comprehensive analysis:
+### Programmatic
 
-### Overall Assessment
-- **Credibility Score**: 0.0 (Scam) to 1.0 (Legitimate)
-- **Confidence Level**: System confidence in the prediction
-- **Risk Level**: HIGH/MEDIUM/LOW risk categorization
-- **Final Verdict**: Human-readable assessment
-
-### Visual Analysis
-- **Production Quality**: Professional vs amateur assessment
-- **Temporal Consistency**: Frame-to-frame coherence
-- **Lighting Analysis**: Professional lighting indicators
-- **Background Integrity**: Compositing artifact detection
-
-### Audio Analysis
-- **Voice Authenticity**: Natural vs synthetic voice detection
-- **Emotional Patterns**: Scripted vs natural emotional expression
-- **Speech Characteristics**: Rate, pauses, and naturalness
-- **Technical Metrics**: Jitter, shimmer, pitch stability
-
-### Example Output
-```
-ANALYSIS RESULTS
-================
-Overall Score: 0.234
-Confidence: 0.87
-Verdict: SCAM / LOW EFFORT
-Risk Level: HIGH
-
-MODALITY BREAKDOWN
-==================
-Visual Quality: 0.156
-Audio Authenticity: 0.312
-
-VOICE ANALYSIS
-==============
-Authenticity Score: 0.312
-Voice Consistency: 0.445
-Pitch Stability: 0.678
-Likely Synthetic: False
-
-EMOTIONAL ANALYSIS
-==================
-Emotional Authenticity: 0.234
-Energy Variation: 0.567
-Pitch Variation: 0.123
-Speech Naturalness: 0.445
-Likely Scripted: True
-```
-
-## 🧠 Technical Architecture
-
-### Visual Pipeline
-1. **Frame Extraction**: Smart sampling across video timeline
-2. **MobileNetV2 Backbone**: Frozen pretrained feature extraction
-3. **Temporal Analyzer**: LSTM + Attention for sequence analysis
-4. **Quality Assessment**: Multi-factor production quality scoring
-
-### Audio Pipeline
-1. **VGGish Embeddings**: Pretrained audio feature extraction
-2. **Voice Analysis**: Pitch tracking, jitter/shimmer calculation
-3. **Emotional Analysis**: Energy dynamics and speech patterns
-4. **Temporal Features**: Consistency and authenticity metrics
-
-### Fusion Strategy
-1. **Feature Preprocessing**: Modality-specific normalization
-2. **Cross-Modal Attention**: Learn inter-modal relationships
-3. **Adaptive Weighting**: Dynamic importance balancing
-4. **Final Classification**: Multi-layer decision network
-
-## 🔧 Advanced Configuration
-
-### Custom Model Training
 ```python
-# ENHANCED MULTIMODAL SYSTEM - Complete integrated training
 from visual_engine import VisualQualityHead
-
-model = VisualQualityHead()
-
-# Enhanced training with temporal & fusion components
-# Use: python train_visual.py
-
-# Programmatic training setup
+from audio_engine  import AdvancedAudioAnalyzer
+from train         import AudioClassificationHead
 import torch
-import torch.optim as optim
 
-# Setup optimizers for different components
-basic_optimizer = optim.Adam(model.head.parameters(), lr=0.001)
-temporal_optimizer = optim.Adam(
-    list(model.temporal_lstm.parameters()) + 
-    list(model.temporal_attention.parameters()), 
-    lr=0.0005
-)
-fusion_optimizer = optim.Adam(model.fusion_network.parameters(), lr=0.0005)
+device       = torch.device('cpu')
+visual_model = VisualQualityHead().to(device)
+audio_head   = AudioClassificationHead(dropout=0.3).to(device)
 
-# Save trained models
-model.save_head_weights('models/weights/enhanced_visual_model.pth')
+ckpt = torch.load('models/weights/best_model.pth', map_location=device, weights_only=True)
+visual_model.head.load_state_dict(ckpt['head'])
+visual_model.temporal_lstm.load_state_dict(ckpt['temporal_lstm'])
+visual_model.temporal_attention.load_state_dict(ckpt['temporal_attention'])
+visual_model.temporal_classifier.load_state_dict(ckpt['temporal_classifier'])
+visual_model.fusion_network.load_state_dict(ckpt['fusion_network'])
+audio_head.load_state_dict(ckpt['audio_head'])
 ```
 
-### Individual Component Analysis
-```python
-# INTEGRATED SYSTEM - All in visual_engine.py
-from visual_engine import VisualQualityHead
-from audio_engine import analyze_audio_complete
+---
 
-model = VisualQualityHead()
+## 🧠 Training Architecture — 4-Phase Sequential
 
-# Analyze just visual components
-visual_features = model.extract_comprehensive_visual_features('video.mp4')
+Each phase freezes all previously trained components and trains only the current target. This prevents catastrophic forgetting on small datasets.
 
-# Analyze just audio components  
-audio_results = analyze_audio_complete('video.mp4')
+```
+Phase 1 — Visual Quality Head
+  Trains  : model.head
+  Freezes : backbone, temporal_lstm, temporal_attention,
+            temporal_classifier, fusion_network
+  Input   : (N, 1280) backbone vectors → mean logit
+  Loss    : BCEWithLogitsLoss(pos_weight)
 
-# Combined multimodal analysis
-complete_results = model.analyze_video_complete('video.mp4')
+Phase 2 — Visual Temporal (LSTM + Attention)
+  Trains  : temporal_lstm, temporal_attention, temporal_classifier
+  Freezes : backbone, head (Phase 1), fusion_network
+  Input   : (1, N, 3, 224, 224) frame sequence
+  Loss    : BCEWithLogitsLoss(pos_weight)
+
+Phase 3 — Audio Classification Head
+  Trains  : AudioClassificationHead (128 → 64 → 1)
+  Freezes : ALL visual components, VGGish (always frozen)
+  Input   : 128-dim audio feature vector
+  Fallback: No audio → score = 0.0, skip gradient update
+  Loss    : BCEWithLogitsLoss(pos_weight)
+
+Phase 4 — Fusion Network
+  Trains  : model.fusion_network
+  Freezes : ALL previous components
+  Input   : visual_vec (135-dim) + audio_padded (135-dim)
+  Loss    : BCEWithLogitsLoss(pos_weight)
 ```
 
-## 📈 Performance Characteristics
+### Key Training Decisions
 
-### Strengths
-- **Multi-modal robustness**: Harder to fool multiple detection systems
-- **Temporal awareness**: Detects editing artifacts and inconsistencies
-- **Voice authenticity**: Advanced vocal pattern analysis
-- **Production quality**: Distinguishes professional from amateur content
-- **Confidence scoring**: Reliable uncertainty quantification
+| Setting | Value | Reason |
+|---|---|---|
+| `max_epochs_per_phase` | 5 | Small dataset (~15 videos) |
+| `early_stop_patience` | 5 | More chances on tiny val set |
+| `val_split` | 0.2 | Stratified 80/20 |
+| `audio_dropout` | 0.5 | Reduce overfitting |
+| `no_audio_score` | 0.0 | Conservative: no audio = suspicious |
+| `pos_weight` | `num_real / num_scam` | Auto-adapts to class imbalance |
 
-### Limitations
-- **Computational cost**: Requires significant processing power
-- **Training data**: Performance depends on quality/quantity of training samples
-- **Language dependency**: Voice analysis optimized for English
-- **Video quality**: Very low quality videos may reduce accuracy
+---
 
-### Recommended Use Cases
-- **Social media verification**: Influencer authenticity assessment
-- **Financial content**: Investment scam detection
-- **News verification**: Deepfake and manipulated content detection
-- **E-commerce**: Product review authenticity
-- **Educational content**: Academic integrity verification
+## 📊 Verdict Zones
 
-## 🛡️ Security Considerations
+| Score Range | Verdict | Emoji |
+|---|---|---|
+| 0.0 – 0.3 | SCAM | 🔴 |
+| 0.3 – 0.5 | LIKELY SCAM | 🟠 |
+| 0.5 – 0.7 | UNCERTAIN | 🟡 |
+| 0.7 – 1.0 | REAL | 🟢 |
 
-- The system is designed for detection, not absolute proof
-- Always combine with human expert review for critical decisions
-- Regular retraining recommended as scam techniques evolve
-- Consider privacy implications when analyzing personal content
+---
 
-## 🔮 Future Enhancements
+## 📋 Example Output
 
-- **Real-time analysis**: Live stream processing capabilities
-- **Multi-language support**: Extended voice analysis for other languages
-- **Blockchain verification**: Immutable authenticity certificates
-- **Advanced deepfake detection**: State-of-the-art synthetic media detection
-- **Behavioral analysis**: User interaction pattern assessment
+```
+VIDEO 1: test_vid1.mp4
+-----------------------------------------------------------------
+  Visual Head Score    : 0.5005
+  Temporal LSTM Score  : 0.5331
 
-## 📞 Support
+  Frame Scores:
+    Frame 01           : 0.4636
+    Frame 07           : 0.8450
+    Frame 08           : 0.7128
 
-For technical questions or issues:
-1. Check the test output for diagnostic information
-2. Verify all dependencies are installed correctly
-3. Ensure video files are in supported formats (MP4, AVI, MOV)
-4. Monitor system resources during analysis
+  Has Audio            : True
+  Audio Head Score     : 0.5419
+  Pause Pattern Score  : 0.5867
+  Consistency Score    : 0.5893
+  Fusion Score         : 0.5138
 
-The enhanced system represents a significant advancement in multimodal authenticity detection, combining cutting-edge deep learning with practical deployment considerations.
+  FINAL SCORE          : 0.5206
+  VERDICT              : 🟡 UNCERTAIN (Borderline)
+  Processing Time      : 14.75s
+```
+
+---
+
+## ⚠️ Known Limitations
+
+- Trained on small dataset (~15 videos) — generalization is limited
+- Cross-modal attention is **not implemented** due to low system resources
+- Fusion is using MLP concatenation
+- No data augmentation currently applied during training

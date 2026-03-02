@@ -1,5 +1,5 @@
 {
-    "timestamp": "2026-02-26 09:48:03",
+    "timestamp": "2026-02-26 15:03:05",
     "weights_used": "models\\weights\\best_model.pth",
     "total_videos": 1,
     "results": [
@@ -24,7 +24,7 @@
             "consistency_score": 0.5893,
             "fusion_score": 0.5138,
             "final_score": 0.5206,
-            "processing_time": 10.33,
+            "processing_time": 14.75,
             "error": null,
             "verdict": "UNCERTAIN",
             "verdict_zone": "Borderline",
