@@ -143,8 +143,6 @@ __pycache__/
 venv/
 *.ipynb_checkpoints/
 .pytest_cache/
-*.pth
-*.pt
 
 # --- Dataset & Large Context ---
 Multimodals/dataset/
