@@ -146,8 +146,5 @@ venv/
 
 # --- Dataset & Large Context ---
 Multimodals/dataset/
-
-Multimodals/comments/models/bert_comment_head.pt
 *.pt
-*.pth
-*.bin
+*.pkl
