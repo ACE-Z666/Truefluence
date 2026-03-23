@@ -1,11 +1,17 @@
 =================================================================
   TRUEFLUENCE — MULTIMODAL SCAM DETECTION
-  Test Report
-  Generated : 2026-03-09 12:16:01
+  Sequential Pipeline: MesoNet → Video → Audio → Comments+Engagement
+  Generated : 2026-03-23 23:12:59
 =================================================================
 
 VIDEO 1: test_vid1.mp4
 -----------------------------------------------------------------
+  [MesoNet Gate]
+  MesoNet Available    : True
+  Deepfake Probability : 0.0000
+  Is Deepfake          : False
+
+  [Video Engine]
   Visual Head Score    : 0.5005
   Temporal LSTM Score  : 0.5331
 
@@ -19,17 +25,25 @@ VIDEO 1: test_vid1.mp4
     Frame 07          : 0.8450
     Frame 08          : 0.7128
 
+  [Audio Engine]
   Has Audio            : True
   Audio Head Score     : 0.5419
   Pause Pattern Score  : 0.5867
   Consistency Score    : 0.5893
-  Fusion Score         : 0.5138
 
-  FINAL SCORE          : 0.5206
+  [Fusion]
+  Fusion Score         : 0.5138
+  Video+Audio Score    : 0.5189
+
+  [Comments + Engagement]
+  Comments+Eng Score   : 0.5000
+
+  [Final]
+  FINAL SCORE          : 0.5076
   VERDICT              : UNCERTAIN (Borderline)
-  Processing Time      : 63.32s
+  Processing Time      : 10.49s
 
 =================================================================
   SUMMARY
 =================================================================
-  test_vid1.mp4                       0.5206  🟡 UNCERTAIN
+  test_vid1.mp4                       0.5076  🟡 UNCERTAIN

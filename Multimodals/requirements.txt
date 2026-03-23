@@ -13,3 +13,6 @@ resampy
 soundfile
 audioread
 numba
+# MesoNet weight download + Keras→PyTorch conversion
+h5py
+requests

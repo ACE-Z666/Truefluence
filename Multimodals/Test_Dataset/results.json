@@ -1,11 +1,38 @@
 {
-    "timestamp": "2026-03-09 12:16:01",
+    "timestamp": "2026-03-23 23:12:59",
     "weights_used": "models\\weights\\best_model.pth",
+    "meso_weights": "models\\weights\\meso4_DF.pth",
+    "pipeline": "MesoNet Gate \u2192 Video \u2192 Audio \u2192 Comments+Engagement",
+    "score_weights": {
+        "video_audio": 0.4,
+        "comments_eng": 0.6
+    },
     "total_videos": 1,
     "results": [
         {
             "video_path": "Test_Dataset\\test_vid1.mp4",
             "video_name": "test_vid1.mp4",
+            "meso_available": true,
+            "is_deepfake": false,
+            "deepfake_prob": 0.0,
+            "frame_df_probs": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+            ],
             "has_audio": true,
             "frame_scores": [
                 0.4636,
@@ -23,8 +50,10 @@
             "pause_score": 0.5867,
             "consistency_score": 0.5893,
             "fusion_score": 0.5138,
-            "final_score": 0.5206,
-            "processing_time": 63.32,
+            "video_audio_score": 0.5189,
+            "comments_eng_score": 0.5,
+            "final_score": 0.5076,
+            "processing_time": 10.49,
             "error": null,
             "verdict": "UNCERTAIN",
             "verdict_zone": "Borderline",

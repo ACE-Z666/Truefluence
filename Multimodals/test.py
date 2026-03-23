@@ -10,8 +10,9 @@ import librosa
 from datetime import datetime
 
 from visual_engine import VisualQualityHead, extract_quality_frames
-from audio_engine  import AdvancedAudioAnalyzer
-from train         import AudioClassificationHead, extract_visual_features, extract_audio_features
+from audio_engine   import AdvancedAudioAnalyzer
+from train          import AudioClassificationHead, extract_visual_features, extract_audio_features
+from mesonet        import Meso4, load_meso4, screen_for_deepfake
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIGURATION
@@ -21,6 +22,7 @@ CONFIG = {
     # Paths
     'test_dir'          : os.path.join('Test_Dataset'),
     'weights_path'      : os.path.join('models', 'weights', 'best_model.pth'),
+    'meso_weights'      : os.path.join('models', 'weights', 'meso4_DF.pth'),
     'results_txt'       : os.path.join('Test_Dataset', 'results.txt'),
     'results_json'      : os.path.join('Test_Dataset', 'results.json'),
 
@@ -33,13 +35,25 @@ CONFIG = {
     # Audio head
     'audio_dropout'     : 0.3,
 
+    # ── MesoNet Gate ──────────────────────────────────────────────────────
+    # If the fraction of frames classified as deepfake
+    # exceeds this threshold, the pipeline aborts immediately.
+    # final_score = 0.0, verdict = DEEPFAKE
+    'deepfake_threshold': 0.80,
+
+    # ── Score Fusion Weights ──────────────────────────────────────────────
+    # Stage 1 : Video + Audio engine combined  → weight 0.40  (40 %)
+    # Stage 2 : Comments + Engagement engine   → weight 0.60  (60 %)
+    'w_video_audio'     : 0.40,
+    'w_comments_eng'    : 0.60,
+
     # Verdict thresholds (Confidence Zones)
     'thresholds': {
         'scam'          : 0.3,      # 0.0 - 0.3  → SCAM
         'likely_scam'   : 0.5,      # 0.3 - 0.5  → LIKELY SCAM
         'uncertain'     : 0.7,      # 0.5 - 0.7  → UNCERTAIN
                                     # 0.7 - 1.0  → REAL
-    }
+    },
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -77,7 +91,7 @@ def get_verdict(score):
 
 def load_models(device):
     """
-    Load all trained components from best_model.pth.
+    Load all trained components from best_model.pth + MesoNet.
 
     Components loaded:
         visual_model.head
@@ -86,13 +100,16 @@ def load_models(device):
         visual_model.temporal_classifier
         visual_model.fusion_network
         audio_head
+        meso_model  (may be None if weights not found)
 
     Returns:
-        visual_model : VisualQualityHead
-        audio_head   : AudioClassificationHead
+        visual_model  : VisualQualityHead
+        audio_head    : AudioClassificationHead
         audio_analyzer: AdvancedAudioAnalyzer
+        meso_model    : Meso4 | None
     """
-    print(f"\n  Loading weights from:")
+    # ── TrueFluence main model ─────────────────────────────────────────────
+    print(f"\n  Loading TrueFluence weights from:")
     print(f"  {CONFIG['weights_path']}")
 
     if not os.path.exists(CONFIG['weights_path']):
@@ -100,7 +117,6 @@ def load_models(device):
         print(f"     Run train.py first to generate weights.")
         sys.exit(1)
 
-    # Load checkpoint
     ckpt = torch.load(
         CONFIG['weights_path'],
         map_location = device,
@@ -126,104 +142,165 @@ def load_models(device):
     # Audio analyzer (VGGish always frozen)
     audio_analyzer = AdvancedAudioAnalyzer(device=str(device))
 
-    print(f"  ✅ All components loaded successfully")
+    print(f"  ✅ TrueFluence components loaded")
     print(f"     Checkpoint epoch : {ckpt.get('epoch',  'N/A')}")
     print(f"     Best val_loss    : {ckpt.get('val_loss','N/A')}")
     print(f"     Best val_acc     : {ckpt.get('val_acc', 'N/A')}")
 
-    return visual_model, audio_head, audio_analyzer
+    # ── MesoNet deepfake gate ──────────────────────────────────────────────
+    print(f"\n  Loading MesoNet (Meso-4 DF) …")
+    meso_model = load_meso4(device, CONFIG['meso_weights'])
+
+    return visual_model, audio_head, audio_analyzer, meso_model
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ANALYZE SINGLE VIDEO
+# ANALYZE SINGLE VIDEO  —  Full Sequential Pipeline
 # ─────────────────────────────────────────────────────────────────────────────
 
-def analyze_video(video_path, visual_model, audio_head, audio_analyzer, device):
+def analyze_video(video_path, visual_model, audio_head, audio_analyzer,
+                  meso_model, device):
     """
-    Full analysis pipeline for a single video.
+    Full sequential analysis pipeline for a single video.
 
-    Steps:
-        1. Extract frames → visual quality scores (per frame)
-        2. Extract frames → temporal LSTM score
-        3. Extract audio  → VGGish → audio head score
-        4. Extract audio  → pause pattern score
-        5. Extract audio  → consistency score
-        6. Fusion         → final combined score
+    ╔══════════════════════════════════════════════════════════════════╗
+    ║  STEP 1 — MesoNet Deepfake Gate                                  ║
+    ║  Extract frames → Meso-4 → deepfake_prob per frame               ║
+    ║  If mean(deepfake_prob) ≥ 80%:                                   ║
+    ║      final_score = 0  →  DEEPFAKE  (pipeline STOPS here)         ║
+    ║  Else: continue ↓                                                 ║
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║  STEP 2 — Video Engine                                            ║
+    ║  MobileNetV2 quality head  +  Temporal LSTM score                ║
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║  STEP 3 — Audio Engine                                            ║
+    ║  VGGish  +  Pause patterns  +  Consistency score                  ║
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║  STEP 4 — Video+Audio Fusion  (internal score)                    ║
+    ║  video_audio_score  =  weighted blend of steps 2+3               ║
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║  STEP 5 — Comments + Engagement Engine  (placeholder / future)   ║
+    ║  comments_eng_score = 0.5 (neutral) if module not available      ║
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║  FINAL SCORE  =  0.40 × video_audio  +  0.60 × comments_eng     ║
+    ╚══════════════════════════════════════════════════════════════════╝
 
     Returns:
         dict with all scores and metadata
     """
+
     result = {
-        'video_path'        : video_path,
-        'video_name'        : os.path.basename(video_path),
-        'has_audio'         : False,
-        'frame_scores'      : [],
-        'visual_head_score' : 0.0,
-        'temporal_score'    : 0.0,
-        'audio_head_score'  : 0.0,
-        'pause_score'       : 0.0,
-        'consistency_score' : 0.0,
-        'fusion_score'      : 0.0,
-        'final_score'       : 0.0,
-        'processing_time'   : 0.0,
-        'error'             : None,
+        'video_path'            : video_path,
+        'video_name'            : os.path.basename(video_path),
+
+        # ── MesoNet gate ──────────────────────────────────────────────────
+        'meso_available'        : False,
+        'is_deepfake'           : False,
+        'deepfake_prob'         : 0.0,
+        'frame_df_probs'        : [],
+
+        # ── Video engine ──────────────────────────────────────────────────
+        'has_audio'             : False,
+        'frame_scores'          : [],
+        'visual_head_score'     : 0.0,
+        'temporal_score'        : 0.0,
+
+        # ── Audio engine ──────────────────────────────────────────────────
+        'audio_head_score'      : 0.0,
+        'pause_score'           : 0.0,
+        'consistency_score'     : 0.0,
+
+        # ── Fusion ────────────────────────────────────────────────────────
+        'fusion_score'          : 0.0,
+        'video_audio_score'     : 0.0,
+
+        # ── Comments + Engagement ─────────────────────────────────────────
+        'comments_eng_score'    : 0.5,   # neutral placeholder
+
+        # ── Final ─────────────────────────────────────────────────────────
+        'final_score'           : 0.0,
+        'processing_time'       : 0.0,
+        'error'                 : None,
     }
 
     t_start = time.time()
 
     try:
+        # ══════════════════════════════════════════════════════════════════
+        # STEP 1 — MesoNet Deepfake Gate
+        # ══════════════════════════════════════════════════════════════════
+        print(f"\n  [MesoNet] Screening for deepfakes …")
+
+        meso_result = screen_for_deepfake(
+            video_path,
+            meso_model,
+            device,
+            num_frames  = 16,
+            threshold   = CONFIG['deepfake_threshold'],
+        )
+
+        result['meso_available']  = meso_result['meso_available']
+        result['is_deepfake']     = meso_result['is_deepfake']
+        result['deepfake_prob']   = meso_result['deepfake_prob']
+        result['frame_df_probs']  = meso_result['frame_df_probs']
+
+        if meso_result['meso_available']:
+            print(f"  [MesoNet] Deepfake probability : "
+                  f"{meso_result['deepfake_prob']:.1%}  "
+                  f"({'⛔ DEEPFAKE DETECTED' if meso_result['is_deepfake'] else '✅ Not a deepfake'})")
+
+        # ── ABORT if deepfake ─────────────────────────────────────────────
+        if result['is_deepfake']:
+            result['final_score']      = 0.0
+            result['video_audio_score']= 0.0
+            result['processing_time']  = round(time.time() - t_start, 2)
+            print(f"  🚫 Pipeline aborted — Deepfake content detected.")
+            return result
+
+        # ══════════════════════════════════════════════════════════════════
+        # STEPS 2–4 — Video + Audio + Fusion
+        # ══════════════════════════════════════════════════════════════════
         with torch.no_grad():
 
-            # ── VISUAL: FRAME QUALITY SCORES ─────────────────────────────
+            # ── STEP 2 : VIDEO ENGINE ────────────────────────────────────
             frames, frames_batch, frame_vecs = extract_visual_features(
                 video_path, visual_model, device
             )
-            # frame_vecs: (num_frames, 1280)
 
             # Per-frame quality score through head
-            raw_logits   = visual_model.head[:-1](frame_vecs)   # (num_frames, 1)
-            frame_scores = torch.sigmoid(raw_logits).squeeze(1) # (num_frames,)
+            raw_logits   = visual_model.head[:-1](frame_vecs)   # (N, 1)
+            frame_scores = torch.sigmoid(raw_logits).squeeze(1) # (N,)
             frame_scores_list = frame_scores.cpu().numpy().tolist()
 
-            # Average visual head score
             avg_logit         = raw_logits.mean().unsqueeze(0)
             visual_head_score = torch.sigmoid(avg_logit).item()
 
-            result['frame_scores']       = [round(s, 4) for s in frame_scores_list]
-            result['visual_head_score']  = round(visual_head_score, 4)
+            result['frame_scores']      = [round(s, 4) for s in frame_scores_list]
+            result['visual_head_score'] = round(visual_head_score, 4)
 
-            # ── VISUAL: TEMPORAL LSTM SCORE ───────────────────────────────
-            temporal_out   = visual_model.forward_temporal(frames_batch)  # (1,1)
+            # Temporal LSTM
+            temporal_out   = visual_model.forward_temporal(frames_batch)
             temporal_score = temporal_out.item()
             result['temporal_score'] = round(temporal_score, 4)
 
-            # ── AUDIO FEATURES ────────────────────────────────────────────
+            # ── STEP 3 : AUDIO ENGINE ────────────────────────────────────
             vggish_emb, audio_vector, has_audio = extract_audio_features(
                 video_path, audio_analyzer, device
             )
             result['has_audio'] = has_audio
 
             if has_audio:
-                # Audio head score
-                audio_logit      = audio_head(vggish_emb)          # (1, 1)
+                audio_logit      = audio_head(vggish_emb)
                 audio_head_score = torch.sigmoid(audio_logit).item()
-                result['audio_head_score'] = round(audio_head_score, 4)
-
-                # Pause score (index 128 of audio_vector)
-                pause_score = audio_vector[128].item()
-                result['pause_score'] = round(pause_score, 4)
-
-                # Consistency score (index 129 of audio_vector)
-                consistency_score = audio_vector[129].item()
-                result['consistency_score'] = round(consistency_score, 4)
-
+                result['audio_head_score']  = round(audio_head_score, 4)
+                result['pause_score']       = round(audio_vector[128].item(), 4)
+                result['consistency_score'] = round(audio_vector[129].item(), 4)
             else:
-                # No audio → all audio scores = 0.0
                 result['audio_head_score']  = 0.0
                 result['pause_score']       = 0.0
                 result['consistency_score'] = 0.0
 
-            # ── FUSION SCORE ──────────────────────────────────────────────
+            # ── STEP 4 : FUSION (Video+Audio combined) ───────────────────
             visual_vec            = frame_vecs.mean(dim=0)[:135].unsqueeze(0)
             audio_padded          = torch.zeros(1, 135, device=device)
             audio_padded[0, :130] = audio_vector
@@ -232,24 +309,61 @@ def analyze_video(video_path, visual_model, audio_head, audio_analyzer, device):
             fusion_score = fusion_out.item()
             result['fusion_score'] = round(fusion_score, 4)
 
-            # ── FINAL SCORE ───────────────────────────────────────────────
-            # Weighted average of all scores
-            # Fusion carries most weight (trained on all phases)
+            # ── Video+Audio blended score (internal 40 % bucket) ─────────
             if has_audio:
-                final_score = (
-                    0.20 * visual_head_score    +   # Phase 1
-                    0.20 * temporal_score       +   # Phase 2
-                    0.20 * audio_head_score     +   # Phase 3
-                    0.40 * fusion_score             # Phase 4 (highest weight)
+                video_audio_score = (
+                    0.15 * visual_head_score +
+                    0.15 * temporal_score    +
+                    0.15 * audio_head_score  +
+                    0.55 * fusion_score
                 )
             else:
-                # No audio → visual only
-                final_score = (
-                    0.40 * visual_head_score    +   # Phase 1 (more weight)
-                    0.60 * temporal_score           # Phase 2 (most weight)
+                video_audio_score = (
+                    0.40 * visual_head_score +
+                    0.60 * temporal_score
                 )
 
-            result['final_score'] = round(final_score, 4)
+            result['video_audio_score'] = round(video_audio_score, 4)
+
+        # ══════════════════════════════════════════════════════════════════
+        # STEP 5 — Comments + Engagement Engine
+        # ══════════════════════════════════════════════════════════════════
+        try:
+            import sys as _sys
+            import os as _os
+            _sys.path.insert(0, _os.path.join(_os.path.dirname(__file__), 'comments'))
+            from bert_comment.run_bert_comments import analyze_comments_bert
+            from bert_comment.run_engagement    import analyze_engagement
+
+            # NOTE: pass actual comments list + engagement stats here
+            # For now we pass empty list / zeros as safe fallback
+            _comments_list  = []          # TODO: replace with real fetched comments
+            _followers      = 0           # TODO: replace with real follower count
+            _likes          = 0           # TODO: replace with real like count
+            _num_comments   = 0           # TODO: replace with real comment count
+
+            if _comments_list:
+                _cr = analyze_comments_bert(_comments_list)
+                _comment_score = _cr['comment_authenticity_score']
+            else:
+                _comment_score = 0.5      # neutral fallback
+
+            _eng_score = analyze_engagement(_followers, _likes, _num_comments)
+            comments_eng_score = round(0.5 * _comment_score + 0.5 * _eng_score, 4)
+
+        except Exception as _ce:
+            print(f"  ⚠  Comments engine error: {_ce}")
+            comments_eng_score = 0.5      # neutral fallback
+
+        # ══════════════════════════════════════════════════════════════════
+        # FINAL SCORE  =  40 % Video+Audio  +  60 % Comments+Engagement
+        # ══════════════════════════════════════════════════════════════════
+        final_score = (
+            CONFIG['w_video_audio']  * video_audio_score +
+            CONFIG['w_comments_eng'] * comments_eng_score
+        )
+        result['final_score']         = round(final_score, 4)
+        result['comments_eng_score']  = round(comments_eng_score, 4)
 
     except Exception as e:
         result['error'] = str(e)
@@ -279,8 +393,30 @@ def print_report(result, index, total):
         print(f"  ❌ Error: {result['error']}")
         return
 
+    # ── MESONET DEEPFAKE GATE ──────────────────────────────────────────────
+    print(f"\n  ── 🔍 DEEPFAKE GATE (MesoNet Meso-4) ───────────────────")
+
+    if result['meso_available']:
+        df_pct = result['deepfake_prob'] * 100
+        df_bar_len = int(result['deepfake_prob'] * 30)
+        df_bar = '█' * df_bar_len + '░' * (30 - df_bar_len)
+
+        print(f"  Deepfake Probability : [{df_bar}] {df_pct:.1f}%")
+
+        if result['is_deepfake']:
+            print(f"\n  ⛔  DEEPFAKE DETECTED — Pipeline Aborted")
+            print(f"  FINAL SCORE : 0.0000  🔴 DEEPFAKE")
+            print(f"  Processing Time : {result['processing_time']}s")
+            print(f"  {'═' * 63}")
+            return
+        else:
+            print(f"  Gate Result        : ✅ PASS (< 80% deepfake threshold)")
+    else:
+        print(f"  ⚠  MesoNet weights not found — Gate DISABLED")
+        print(f"     Run:  python mesonet.py  to download weights")
+
     # ── VISUAL SCORES ─────────────────────────────────────────────────────
-    print(f"\n  ── VISUAL ANALYSIS ──────────────────────────────────────")
+    print(f"\n  ── 🎥 VIDEO ENGINE ──────────────────────────────────────")
 
     v_emoji, v_label, _ = get_verdict(result['visual_head_score'])
     print(f"  Quality Head Score  : {result['visual_head_score']:.4f}  {v_emoji} {v_label}")
@@ -296,7 +432,7 @@ def print_report(result, index, total):
         print(f"    Frame {i+1:02d} : [{bar}] {score:.4f}  {f_emoji}")
 
     # ── AUDIO SCORES ──────────────────────────────────────────────────────
-    print(f"\n  ── AUDIO ANALYSIS ───────────────────────────────────────")
+    print(f"\n  ── 🎵 AUDIO ENGINE ──────────────────────────────────────")
 
     if result['has_audio']:
         a_emoji, a_label, _ = get_verdict(result['audio_head_score'])
@@ -311,28 +447,27 @@ def print_report(result, index, total):
         print(f"  Audio scores set to : 0.0000  (fallback)")
 
     # ── FUSION SCORE ──────────────────────────────────────────────────────
-    print(f"\n  ── FUSION ANALYSIS ──────────────────────────────────────")
+    print(f"\n  ── 🔗 FUSION (Video + Audio) ────────────────────────────")
     fu_emoji, fu_label, _ = get_verdict(result['fusion_score'])
     print(f"  Fusion Score        : {result['fusion_score']:.4f}  {fu_emoji} {fu_label}")
+    va_emoji, va_label, _ = get_verdict(result['video_audio_score'])
+    print(f"  Video+Audio Score   : {result['video_audio_score']:.4f}  {va_emoji} {va_label}")
+
+    # ── COMMENTS + ENGAGEMENT ─────────────────────────────────────────────
+    print(f"\n  ── 💬 COMMENTS + ENGAGEMENT ENGINE ─────────────────────")
+    ce_emoji, ce_label, _ = get_verdict(result['comments_eng_score'])
+    print(f"  Comments+Eng Score  : {result['comments_eng_score']:.4f}  {ce_emoji} {ce_label}")
 
     # ── SCORE BREAKDOWN ───────────────────────────────────────────────────
     print(f"\n  ── SCORE BREAKDOWN ──────────────────────────────────────")
-
-    if result['has_audio']:
-        print(f"  Visual Head  (20%)  : {result['visual_head_score']:.4f} × 0.20 "
-              f"= {result['visual_head_score'] * 0.20:.4f}")
-        print(f"  Temporal     (20%)  : {result['temporal_score']:.4f} × 0.20 "
-              f"= {result['temporal_score'] * 0.20:.4f}")
-        print(f"  Audio Head   (20%)  : {result['audio_head_score']:.4f} × 0.20 "
-              f"= {result['audio_head_score'] * 0.20:.4f}")
-        print(f"  Fusion       (40%)  : {result['fusion_score']:.4f} × 0.40 "
-              f"= {result['fusion_score'] * 0.40:.4f}")
-    else:
-        print(f"  Visual Head  (40%)  : {result['visual_head_score']:.4f} × 0.40 "
-              f"= {result['visual_head_score'] * 0.40:.4f}")
-        print(f"  Temporal     (60%)  : {result['temporal_score']:.4f} × 0.60 "
-              f"= {result['temporal_score'] * 0.60:.4f}")
-        print(f"  Audio        (  %)  : N/A (no audio)")
+    w_va = CONFIG['w_video_audio']
+    w_ce = CONFIG['w_comments_eng']
+    print(f"  Video+Audio  ({int(w_va*100):2d}%) : "
+          f"{result['video_audio_score']:.4f} × {w_va:.2f} "
+          f"= {result['video_audio_score'] * w_va:.4f}")
+    print(f"  Comments+Eng ({int(w_ce*100):2d}%) : "
+          f"{result['comments_eng_score']:.4f} × {w_ce:.2f} "
+          f"= {result['comments_eng_score'] * w_ce:.4f}")
 
     # ── FINAL VERDICT ─────────────────────────────────────────────────────
     print(f"\n  {'─' * 55}")
@@ -365,7 +500,7 @@ def save_report(all_results):
     txt_lines = []
     txt_lines.append("=" * 65)
     txt_lines.append("  TRUEFLUENCE — MULTIMODAL SCAM DETECTION")
-    txt_lines.append("  Test Report")
+    txt_lines.append("  Sequential Pipeline: MesoNet → Video → Audio → Comments+Engagement")
     txt_lines.append(f"  Generated : {timestamp}")
     txt_lines.append("=" * 65)
 
@@ -380,20 +515,39 @@ def save_report(all_results):
             txt_lines.append(f"  ERROR: {result['error']}")
             continue
 
+        # MesoNet gate
+        txt_lines.append(f"  [MesoNet Gate]")
+        txt_lines.append(f"  MesoNet Available    : {result['meso_available']}")
+        txt_lines.append(f"  Deepfake Probability : {result['deepfake_prob']:.4f}")
+        txt_lines.append(f"  Is Deepfake          : {result['is_deepfake']}")
+
+        if result['is_deepfake']:
+            txt_lines.append(f"  ⛔ DEEPFAKE — Pipeline aborted")
+            txt_lines.append(f"  FINAL SCORE          : 0.0000   DEEPFAKE")
+            continue
+
+        txt_lines.append(f"\n  [Video Engine]")
         txt_lines.append(f"  Visual Head Score    : {result['visual_head_score']:.4f}")
         txt_lines.append(f"  Temporal LSTM Score  : {result['temporal_score']:.4f}")
-
         txt_lines.append(f"\n  Frame Scores:")
         for j, s in enumerate(result['frame_scores']):
             txt_lines.append(f"    Frame {j+1:02d}          : {s:.4f}")
 
-        txt_lines.append(f"\n  Has Audio            : {result['has_audio']}")
+        txt_lines.append(f"\n  [Audio Engine]")
+        txt_lines.append(f"  Has Audio            : {result['has_audio']}")
         txt_lines.append(f"  Audio Head Score     : {result['audio_head_score']:.4f}")
         txt_lines.append(f"  Pause Pattern Score  : {result['pause_score']:.4f}")
         txt_lines.append(f"  Consistency Score    : {result['consistency_score']:.4f}")
-        txt_lines.append(f"  Fusion Score         : {result['fusion_score']:.4f}")
 
-        txt_lines.append(f"\n  FINAL SCORE          : {final_score:.4f}")
+        txt_lines.append(f"\n  [Fusion]")
+        txt_lines.append(f"  Fusion Score         : {result['fusion_score']:.4f}")
+        txt_lines.append(f"  Video+Audio Score    : {result['video_audio_score']:.4f}")
+
+        txt_lines.append(f"\n  [Comments + Engagement]")
+        txt_lines.append(f"  Comments+Eng Score   : {result['comments_eng_score']:.4f}")
+
+        txt_lines.append(f"\n  [Final]")
+        txt_lines.append(f"  FINAL SCORE          : {final_score:.4f}")
         txt_lines.append(f"  VERDICT              : {label} ({zone})")
         txt_lines.append(f"  Processing Time      : {result['processing_time']}s")
 
@@ -404,14 +558,14 @@ def save_report(all_results):
     for result in all_results:
         if not result['error']:
             emoji, label, zone = get_verdict(result['final_score'])
+            status = "⛔ DEEPFAKE" if result['is_deepfake'] else f"{emoji} {label}"
             txt_lines.append(
                 f"  {result['video_name']:<35} "
-                f"{result['final_score']:.4f}  {emoji} {label}"
+                f"{result['final_score']:.4f}  {status}"
             )
 
     txt_content = "\n".join(txt_lines)
 
-    # Write TXT
     with open(CONFIG['results_txt'], 'w', encoding='utf-8') as f:
         f.write(txt_content)
 
@@ -419,19 +573,26 @@ def save_report(all_results):
     json_data = {
         'timestamp'     : timestamp,
         'weights_used'  : CONFIG['weights_path'],
+        'meso_weights'  : CONFIG['meso_weights'],
+        'pipeline'      : 'MesoNet Gate → Video → Audio → Comments+Engagement',
+        'score_weights' : {
+            'video_audio'   : CONFIG['w_video_audio'],
+            'comments_eng'  : CONFIG['w_comments_eng'],
+        },
         'total_videos'  : len(all_results),
-        'results'       : []
+        'results'       : [],
     }
 
     for result in all_results:
         if not result['error']:
             emoji, label, zone = get_verdict(result['final_score'])
-            json_data['results'].append({
+            entry = {
                 **result,
-                'verdict'       : label,
-                'verdict_zone'  : zone,
-                'verdict_emoji' : emoji,
-            })
+                'verdict'       : 'DEEPFAKE' if result['is_deepfake'] else label,
+                'verdict_zone'  : 'Deepfake Content' if result['is_deepfake'] else zone,
+                'verdict_emoji' : '⛔' if result['is_deepfake'] else emoji,
+            }
+            json_data['results'].append(entry)
         else:
             json_data['results'].append(result)
 
@@ -450,9 +611,15 @@ def save_report(all_results):
 def test():
     print("\n" + "═" * 65)
     print("  🔍 TRUEFLUENCE — MULTIMODAL SCAM DETECTION TEST")
-    print("     Visual  : MobileNetV2 + LSTM + Attention")
-    print("     Audio   : VGGish (frozen) + Pause + Audio Head")
-    print("     Verdict : Confidence Zone Thresholds")
+    print("  ─────────────────────────────────────────────────────────")
+    print("  Pipeline:")
+    print("    [1] 🔍 MesoNet Deepfake Gate  (abort if ≥ 80% deepfake)")
+    print("    [2] 🎥 Video Engine  (MobileNetV2 + LSTM + Attention)")
+    print("    [3] 🎵 Audio Engine  (VGGish + Pause + Consistency)")
+    print("    [4] 🔗 Fusion        (Video+Audio → 40 % of final)")
+    print("    [5] 💬 Comments + Engagement Engine  (60 % of final)")
+    print("  ─────────────────────────────────────────────────────────")
+    print("  Final Score = 40% Video+Audio  +  60% Comments+Engagement")
     print("═" * 65)
 
     total_start = time.time()
@@ -482,11 +649,11 @@ def test():
         print(f"    → {os.path.basename(v)}")
 
     # ── LOAD MODELS ──────────────────────────────────────────────────────────
-    print(f"\n  Loading Models...")
-    visual_model, audio_head, audio_analyzer = load_models(device)
+    print(f"\n  Loading Models …")
+    visual_model, audio_head, audio_analyzer, meso_model = load_models(device)
 
     # ── ANALYZE EACH VIDEO ───────────────────────────────────────────────────
-    print(f"\n  Analyzing {len(test_videos)} video(s)...")
+    print(f"\n  Analyzing {len(test_videos)} video(s) …")
 
     all_results = []
 
@@ -496,7 +663,8 @@ def test():
             visual_model,
             audio_head,
             audio_analyzer,
-            device
+            meso_model,
+            device,
         )
         all_results.append(result)
         print_report(result, i, len(test_videos))
@@ -510,16 +678,23 @@ def test():
     print(f"  {'Video':<35} {'Score':>6}  Verdict")
     print("  " + "-" * 55)
 
+    deepfakes = 0
     for result in all_results:
         if not result['error']:
             emoji, label, zone = get_verdict(result['final_score'])
-            print(f"  {result['video_name']:<35} "
-                  f"{result['final_score']:>6.4f}  "
-                  f"{emoji} {label}")
+            if result['is_deepfake']:
+                deepfakes += 1
+                print(f"  {result['video_name']:<35} "
+                      f"{'0.0000':>6}  ⛔ DEEPFAKE")
+            else:
+                print(f"  {result['video_name']:<35} "
+                      f"{result['final_score']:>6.4f}  "
+                      f"{emoji} {label}")
         else:
             print(f"  {result['video_name']:<35}  ❌ ERROR")
 
     print("  " + "-" * 55)
+    print(f"  Deepfakes Detected    : {deepfakes} / {len(all_results)}")
     print(f"  Total Processing Time : {total_time:.2f}s")
     print("═" * 65)
 
