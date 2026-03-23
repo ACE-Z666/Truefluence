@@ -51,7 +51,7 @@ CONFIG = {
     'thresholds': {
         'scam'          : 0.3,      # 0.0 - 0.3  → SCAM
         'likely_scam'   : 0.5,      # 0.3 - 0.5  → LIKELY SCAM
-        'uncertain'     : 0.7,      # 0.5 - 0.7  → UNCERTAIN
+        'LIKELY REAL'     : 0.7,      # 0.5 - 0.7  → LIKELY REAL
                                     # 0.7 - 1.0  → REAL
     },
 }
@@ -67,7 +67,7 @@ def get_verdict(score):
     Zones:
         0.0 - 0.3  → 🔴 SCAM          (confident fake)
         0.3 - 0.5  → 🟠 LIKELY SCAM   (suspicious)
-        0.5 - 0.7  → 🟡 UNCERTAIN     (borderline)
+        0.5 - 0.7  → 🟡 LIKELY REAL     (borderline)
         0.7 - 1.0  → 🟢 REAL          (confident real)
 
     Returns:
@@ -79,8 +79,8 @@ def get_verdict(score):
         return '🔴', 'SCAM',        'Confident Fake'
     elif score <= CONFIG['thresholds']['likely_scam']:
         return '🟠', 'LIKELY SCAM', 'Suspicious'
-    elif score <= CONFIG['thresholds']['uncertain']:
-        return '🟡', 'UNCERTAIN',   'Borderline'
+    elif score <= CONFIG['thresholds']['LIKELY REAL']:
+        return '🟡', 'LIKELY REAL',   'Borderline'
     else:
         return '🟢', 'REAL',        'Confident Real'
 

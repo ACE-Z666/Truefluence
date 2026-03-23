@@ -1,5 +1,5 @@
 {
-    "timestamp": "2026-03-23 23:12:59",
+    "timestamp": "2026-03-24 01:31:59",
     "weights_used": "models\\weights\\best_model.pth",
     "meso_weights": "models\\weights\\meso4_DF.pth",
     "pipeline": "MesoNet Gate \u2192 Video \u2192 Audio \u2192 Comments+Engagement",
@@ -53,9 +53,9 @@
             "video_audio_score": 0.5189,
             "comments_eng_score": 0.5,
             "final_score": 0.5076,
-            "processing_time": 10.49,
+            "processing_time": 9.94,
             "error": null,
-            "verdict": "UNCERTAIN",
+            "verdict": "LIKELY REAL",
             "verdict_zone": "Borderline",
             "verdict_emoji": "\ud83d\udfe1"
         }
