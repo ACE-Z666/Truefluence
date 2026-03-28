@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TrueFluence — Social Credibility Scanner</title>
+  <meta name="description" content="AI-powered social media credibility scanner detecting deepfakes, scams and engagement fraud." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    /* ── RESET & BASE ──────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0a0f;
+      --surface:   #111118;
+      --card:      #16161f;
+      --border:    #ffffff12;
+      --accent:    #6c63ff;
+      --accent2:   #a78bfa;
+      --blue:      #38bdf8;
+      --green:     #4ade80;
+      --orange:    #fb923c;
+      --red:       #f87171;
+      --text:      #f1f5f9;
+      --muted:     #64748b;
+      --radius:    18px;
+      --glow:      0 0 40px #6c63ff33;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── SCROLLBAR ─────────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 99px; }
+
+    /* ── TOPBAR ────────────────────────────────────────────────────────────── */
+    .topbar {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 28px;
+      background: rgba(10,10,15,0.85);
+      backdrop-filter: blur(18px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      display: flex; align-items: center; gap: 12px;
+      font-weight: 800; font-size: 1.25rem;
+      background: linear-gradient(135deg, var(--accent), var(--blue));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+
+    .logo svg { width: 34px; height: 34px; flex-shrink: 0; }
+
+    .topbar-right { display: flex; align-items: center; gap: 12px; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 20px; border-radius: 999px; font-size: 0.875rem;
+      font-weight: 600; cursor: pointer; border: none; transition: all 0.2s;
+      font-family: inherit;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--blue));
+      color: #fff;
+      box-shadow: 0 4px 20px #6c63ff44;
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 30px #6c63ff66; }
+    .btn-primary:active { transform: translateY(0); }
+
+    .btn-ghost {
+      background: var(--border); color: var(--text); border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background: #ffffff18; }
+
+    /* ── LAYOUT ────────────────────────────────────────────────────────────── */
+    .layout {
+      display: grid;
+      grid-template-columns: 280px 1fr 320px;
+      gap: 0;
+      min-height: calc(100vh - 65px);
+    }
+
+    /* ── SIDEBAR ───────────────────────────────────────────────────────────── */
+    .sidebar {
+      border-right: 1px solid var(--border);
+      padding: 28px 20px;
+      position: sticky; top: 65px;
+      height: calc(100vh - 65px);
+      overflow-y: auto;
+    }
+
+    .sidebar-label {
+      font-size: 0.7rem; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 1.5px;
+      margin-bottom: 12px;
+    }
+
+    .nav-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 14px; border-radius: 12px;
+      font-size: 0.9rem; font-weight: 500; color: var(--text);
+      cursor: pointer; margin-bottom: 4px;
+      transition: background 0.15s;
+    }
+    .nav-item:hover { background: var(--surface); }
+    .nav-item.active {
+      background: linear-gradient(135deg, #6c63ff22, #38bdf811);
+      color: var(--accent2);
+    }
+    .nav-item svg { width: 20px; height: 20px; flex-shrink: 0; }
+
+    /* ── FEED ──────────────────────────────────────────────────────────────── */
+    .feed {
+      padding: 28px 32px;
+      max-width: 680px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .feed-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    .feed-title { font-size: 1.1rem; font-weight: 700; }
+
+    /* ── REEL CARD ─────────────────────────────────────────────────────────── */
+    .reel-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 28px;
+      transition: box-shadow 0.3s;
+      animation: fadeUp 0.4s ease both;
+    }
+    .reel-card:hover { box-shadow: 0 8px 40px #0008; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* card header */
+    .card-header {
+      display: flex; align-items: center; gap: 12px;
+      padding: 16px 18px;
+    }
+    .avatar {
+      width: 42px; height: 42px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--blue));
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 1rem; color: #fff; flex-shrink: 0;
+    }
+    .card-meta { flex: 1; }
+    .card-username { font-weight: 700; font-size: 0.9rem; }
+    .card-time { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+    /* verdict badge */
+    .verdict-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 12px; border-radius: 999px;
+      font-size: 0.75rem; font-weight: 700;
+    }
+    .verdict-real     { background: #4ade8022; color: var(--green); border: 1px solid #4ade8044; }
+    .verdict-scam     { background: #f8717122; color: var(--red);   border: 1px solid #f8717144; }
+    .verdict-likely   { background: #fb923c22; color: var(--orange); border: 1px solid #fb923c44; }
+    .verdict-uncertain{ background: #facc1522; color: #facc15;       border: 1px solid #facc1544; }
+    .verdict-deepfake { background: #f8717133; color: var(--red);   border: 1px solid #f87171; }
+    .verdict-pending  { background: #6c63ff22; color: var(--accent2); border: 1px solid #6c63ff44; }
+
+    /* video */
+    .card-video {
+      width: 100%; max-height: 380px; object-fit: cover;
+      display: block; background: #000;
+    }
+
+    .video-wrapper { position: relative; }
+
+    /* video overlay badge */
+    .deepfake-banner {
+      position: absolute; top: 0; left: 0; right: 0;
+      background: linear-gradient(to bottom, #f8717199, transparent);
+      padding: 12px 16px;
+      font-weight: 700; font-size: 0.85rem; color: var(--red);
+      letter-spacing: 0.5px;
+    }
+
+    /* caption */
+    .card-caption {
+      padding: 14px 18px 10px;
+      font-size: 0.88rem; line-height: 1.5; color: var(--text);
+    }
+    .card-caption span.username { font-weight: 700; }
+
+    /* engagement row */
+    .engagement-row {
+      display: flex; align-items: center; gap: 20px;
+      padding: 8px 18px 14px;
+    }
+    .eng-item {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 0.82rem; color: var(--muted);
+    }
+    .eng-item svg { width: 16px; height: 16px; }
+    .eng-item strong { color: var(--text); font-weight: 600; }
+
+    /* divider */
+    .card-divider { border: none; border-top: 1px solid var(--border); margin: 0 18px; }
+
+    /* comments preview */
+    .comment-list { padding: 12px 18px; }
+    .comment-item {
+      display: flex; gap: 10px; margin-bottom: 10px;
+      font-size: 0.82rem; line-height: 1.4;
+    }
+    .comment-avatar {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: var(--surface); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.6rem; font-weight: 700; color: var(--muted); flex-shrink: 0;
+    }
+    .comment-author { font-weight: 600; color: var(--accent2); margin-right: 6px; }
+    .comment-text { color: #cbd5e1; }
+
+    /* analyze button + score section */
+    .card-footer { padding: 16px 18px; }
+
+    .analyze-btn {
+      width: 100%; padding: 13px; border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), var(--blue));
+      color: #fff; font-weight: 700; font-size: 0.9rem;
+      border: none; cursor: pointer; font-family: inherit;
+      transition: all 0.2s; display: flex; align-items: center;
+      justify-content: center; gap: 10px;
+    }
+    .analyze-btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+    .analyze-btn:disabled { filter: grayscale(1); cursor: not-allowed; transform: none; }
+
+    /* score reveal */
+    .score-panel {
+      margin-top: 16px; border-radius: 14px;
+      background: var(--surface); border: 1px solid var(--border);
+      padding: 16px; animation: fadeUp 0.3s ease;
+    }
+    .score-row {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .score-label { font-size: 0.78rem; color: var(--muted); font-weight: 500; }
+    .score-val   { font-size: 0.84rem; font-weight: 700; }
+
+    .progress-bar {
+      height: 6px; background: #ffffff0f; border-radius: 99px;
+      overflow: hidden; margin-bottom: 10px;
+    }
+    .progress-fill {
+      height: 100%; border-radius: 99px;
+      background: linear-gradient(90deg, var(--red), var(--orange), var(--green));
+      transition: width 1s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    .score-axis {
+      display: flex; justify-content: space-between;
+      font-size: 0.65rem; color: var(--muted);
+    }
+
+    .final-verdict-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: 12px; margin-top: 4px;
+      border-top: 1px solid var(--border);
+    }
+    .final-score-num {
+      font-size: 2rem; font-weight: 900;
+      background: linear-gradient(135deg, var(--accent2), var(--blue));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+
+    /* ── INFO PANEL ────────────────────────────────────────────────────────── */
+    .info-panel {
+      border-left: 1px solid var(--border);
+      padding: 28px 20px;
+      position: sticky; top: 65px;
+      height: calc(100vh - 65px);
+      overflow-y: auto;
+    }
+
+    .panel-section { margin-bottom: 28px; }
+    .panel-title {
+      font-size: 0.7rem; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px;
+    }
+
+    .stat-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 14px; margin-bottom: 10px;
+    }
+    .stat-card-label { font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
+    .stat-card-value { font-size: 1.4rem; font-weight: 800; }
+    .stat-card-sub   { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+
+    .legend-item {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 0.8rem; margin-bottom: 8px; color: #cbd5e1;
+    }
+    .legend-dot {
+      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+    }
+
+    /* ── MODAL ─────────────────────────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,0.75); backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+      opacity: 0; pointer-events: none; transition: opacity 0.25s;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+
+    .modal {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      width: 100%; max-width: 560px;
+      max-height: 90vh; overflow-y: auto;
+      padding: 32px;
+      transform: scale(0.95); transition: transform 0.25s;
+    }
+    .modal-overlay.open .modal { transform: scale(1); }
+
+    .modal-title {
+      font-size: 1.3rem; font-weight: 800; margin-bottom: 6px;
+      background: linear-gradient(135deg, var(--accent2), var(--blue));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .modal-sub { font-size: 0.82rem; color: var(--muted); margin-bottom: 24px; }
+
+    .form-group { margin-bottom: 18px; }
+    .form-label {
+      display: block; font-size: 0.8rem; font-weight: 600;
+      color: var(--muted); margin-bottom: 7px; text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .form-input, .form-textarea {
+      width: 100%; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 11px 14px; color: var(--text);
+      font-family: inherit; font-size: 0.88rem;
+      transition: border-color 0.2s;
+      outline: none;
+    }
+    .form-input:focus, .form-textarea:focus { border-color: var(--accent); }
+    .form-textarea { resize: vertical; min-height: 80px; }
+
+    .form-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+    .comment-inputs { display: flex; flex-direction: column; gap: 8px; }
+
+    /* video drop zone */
+    .drop-zone {
+      border: 2px dashed var(--border); border-radius: 14px;
+      padding: 28px; text-align: center; cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--accent); background: #6c63ff0a;
+    }
+    .drop-zone input { display: none; }
+    .drop-icon { font-size: 2rem; margin-bottom: 8px; }
+    .drop-text { font-size: 0.85rem; color: var(--muted); }
+    .drop-hint { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
+    .drop-filename {
+      margin-top: 10px; font-size: 0.82rem; font-weight: 600;
+      color: var(--accent2); word-break: break-all;
+    }
+
+    .modal-footer { display: flex; gap: 12px; margin-top: 24px; }
+    .modal-footer .btn { flex: 1; justify-content: center; padding: 13px; }
+
+    /* ── LOADING SPINNER ───────────────────────────────────────────────────── */
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2.5px solid #ffffff44;
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── EMPTY STATE ───────────────────────────────────────────────────────── */
+    .empty-state {
+      text-align: center; padding: 60px 20px;
+      color: var(--muted);
+    }
+    .empty-icon { font-size: 3rem; margin-bottom: 16px; }
+    .empty-text { font-size: 0.95rem; }
+
+    /* ── TOAST ─────────────────────────────────────────────────────────────── */
+    .toast-container {
+      position: fixed; bottom: 24px; right: 24px;
+      z-index: 300; display: flex; flex-direction: column; gap: 10px;
+    }
+    .toast {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 14px 18px;
+      font-size: 0.85rem; font-weight: 500;
+      box-shadow: 0 8px 30px #0008;
+      animation: slideIn 0.3s ease;
+      max-width: 300px;
+    }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(30px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    .toast.success { border-left: 3px solid var(--green); }
+    .toast.error   { border-left: 3px solid var(--red); }
+    .toast.info    { border-left: 3px solid var(--accent); }
+
+    /* ── RESPONSIVE ────────────────────────────────────────────────────────── */
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 0 1fr 0; }
+      .sidebar, .info-panel { display: none; }
+    }
+    @media (max-width: 640px) {
+      .feed { padding: 16px; }
+      .form-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── TOPBAR ──────────────────────────────────────────────────────────────── -->
+<header class="topbar">
+  <div class="logo">
+    <!-- Shield + Eye SVG -->
+    <svg viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="lg" x1="0" y1="0" x2="34" y2="34" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#6c63ff"/>
+          <stop offset="100%" stop-color="#38bdf8"/>
+        </linearGradient>
+      </defs>
+      <path d="M17 2L4 7v9c0 7.18 5.6 13.9 13 15 7.4-1.1 13-7.82 13-15V7L17 2z"
+            fill="url(#lg)" opacity="0.9"/>
+      <ellipse cx="17" cy="17" rx="6" ry="4" stroke="#fff" stroke-width="1.5" fill="none"/>
+      <circle cx="17" cy="17" r="2" fill="#fff"/>
+    </svg>
+    TrueFluence
+  </div>
+
+  <div class="topbar-right">
+    <button class="btn btn-ghost" onclick="loadReels()">↻ Refresh</button>
+    <button class="btn btn-primary" onclick="openModal()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      Add Reel
+    </button>
+  </div>
+</header>
+
+<!-- ── LAYOUT ──────────────────────────────────────────────────────────────── -->
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-label">Navigation</div>
+    <div class="nav-item active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+      </svg>
+      Feed
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
+      Scan Video
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      </svg>
+      Deepfake Gate
+    </div>
+    <div class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+      Analytics
+    </div>
+
+    <div style="margin-top:28px;">
+      <div class="sidebar-label">Pipeline</div>
+      <div style="font-size:0.78rem; color:var(--muted); line-height:1.9; padding:0 4px;">
+        1️⃣ MesoNet Deepfake Gate<br>
+        2️⃣ Video Engine<br>
+        3️⃣ Audio Engine<br>
+        4️⃣ Fusion (40%)<br>
+        5️⃣ Comments + Engagement (60%)
+      </div>
+    </div>
+  </aside>
+
+  <!-- FEED -->
+  <main class="feed">
+    <div class="feed-header">
+      <div class="feed-title">📱 Social Feed</div>
+      <div style="font-size:0.78rem;color:var(--muted);" id="reel-count">Loading…</div>
+    </div>
+
+    <div id="feed-container">
+      <div class="empty-state">
+        <div class="spinner" style="margin:0 auto 20px;width:32px;height:32px;border-width:3px;"></div>
+        <div class="empty-text">Loading reels…</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- INFO PANEL -->
+  <aside class="info-panel">
+    <div class="panel-section">
+      <div class="panel-title">Score Legend</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>0.0 – 0.3 · SCAM</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div>0.3 – 0.5 · LIKELY SCAM</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#facc15"></div>0.5 – 0.7 · UNCERTAIN</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>0.7 – 1.0 · REAL</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f87171;box-shadow:0 0 6px #f87171"></div>Deepfake · BLOCKED</div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">Weight Split</div>
+      <div class="stat-card">
+        <div class="stat-card-label">🎥 Video + Audio</div>
+        <div class="stat-card-value" style="color:var(--blue)">40%</div>
+        <div class="stat-card-sub">MobileNetV2 · VGGish · Fusion</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">💬 Comments + Engagement</div>
+        <div class="stat-card-value" style="color:var(--accent2)">60%</div>
+        <div class="stat-card-sub">BERT · MLP · Follower ratio</div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">Session Stats</div>
+      <div class="stat-card">
+        <div class="stat-card-label">Reels Analyzed</div>
+        <div class="stat-card-value" id="stat-total">–</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">Deepfakes Blocked</div>
+        <div class="stat-card-value" style="color:var(--red)" id="stat-deepfake">–</div>
+      </div>
+    </div>
+  </aside>
+
+</div>
+
+<!-- ── ADD REEL MODAL ──────────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModalOutside(event)">
+  <div class="modal">
+    <div class="modal-title">🎬 Add New Reel</div>
+    <div class="modal-sub">Upload a video and fill in the social data to run a credibility scan.</div>
+
+    <form id="add-reel-form" onsubmit="submitReel(event)">
+
+      <!-- video -->
+      <div class="form-group">
+        <label class="form-label">Video File</label>
+        <div class="drop-zone" id="drop-zone" onclick="document.getElementById('video-input').click()"
+             ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragleave="handleDragLeave(event)">
+          <input type="file" id="video-input" accept="video/*" onchange="handleFileSelect(event)" />
+          <div class="drop-icon">🎥</div>
+          <div class="drop-text">Click to choose a video or drag & drop</div>
+          <div class="drop-hint">MP4, MOV, AVI, MKV</div>
+          <div class="drop-filename" id="drop-filename"></div>
+        </div>
+      </div>
+
+      <!-- username + caption -->
+      <div class="form-group">
+        <label class="form-label">Username / Creator</label>
+        <input type="text" class="form-input" id="inp-username" placeholder="@username" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Caption</label>
+        <textarea class="form-textarea" id="inp-caption" placeholder="Write a caption…" rows="2"></textarea>
+      </div>
+
+      <!-- engagement -->
+      <div class="form-group">
+        <label class="form-label">Engagement Data</label>
+        <div class="form-row">
+          <div>
+            <label class="form-label" style="font-size:0.7rem;">Followers</label>
+            <input type="number" class="form-input" id="inp-followers" placeholder="e.g. 12500" min="0" required />
+          </div>
+          <div>
+            <label class="form-label" style="font-size:0.7rem;">Video Likes</label>
+            <input type="number" class="form-input" id="inp-likes" placeholder="e.g. 340" min="0" required />
+          </div>
+          <div>
+            <label class="form-label" style="font-size:0.7rem;">Comment Count</label>
+            <input type="number" class="form-input" id="inp-num-comments" placeholder="e.g. 28" min="0" required />
+          </div>
+        </div>
+      </div>
+
+      <!-- comments -->
+      <div class="form-group">
+        <label class="form-label">Comments (up to 10)</label>
+        <div class="comment-inputs" id="comment-inputs">
+          <!-- dynamically generated -->
+        </div>
+        <button type="button" class="btn btn-ghost" style="margin-top:8px;font-size:0.78rem;"
+                onclick="addCommentField()">+ Add Comment</button>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="submit-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          Upload & Scan
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── TOAST ────────────────────────────────────────────────────────────────── -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+// ── CONFIG ───────────────────────────────────────────────────────────────────
+const API = 'http://localhost:5000';
+
+// ── SAMPLE SEED DATA  (pre-loaded test video) ─────────────────────────────────
+const SEED_REELS = [
+  {
+    id: 'demo01',
+    username: '@investwithraj',
+    caption: '🚀 Secret crypto strategy that made me $10K in a week! Limited spots — DM me NOW before it\'s gone 💰💰',
+    video_url: null,          // no real video in seed
+    followers: 980,
+    likes: 8420,
+    num_comments: 312,
+    comments: [
+      'This changed my life!! Already made $500',
+      'Fake!! Reported this account',
+      'Bro this is 100% scam don\'t trust',
+      'My friend lost money following this guy',
+    ],
+    timestamp: '2026-03-24 00:01:00',
+    analysis: null,           // not yet analyzed
+  },
+  {
+    id: 'demo02',
+    username: '@techreviews_official',
+    caption: 'Honest review of the new smartphone after 30 days of daily use. My full breakdown 👇',
+    video_url: null,
+    followers: 142000,
+    likes: 5300,
+    num_comments: 410,
+    comments: [
+      'Great review as always!',
+      'Very helpful, subscribed!',
+      'Can you compare with the previous model?',
+      'Accurate and unbiased 👏',
+    ],
+    timestamp: '2026-03-24 00:00:00',
+    analysis: null,
+  },
+];
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let reels     = [];
+let selectedFile = null;
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  addCommentField();
+  addCommentField();
+  addCommentField();
+  loadReels();
+});
+
+// ── LOAD REELS ────────────────────────────────────────────────────────────────
+async function loadReels() {
+  try {
+    const res  = await fetch(`${API}/api/reels`);
+    const data = res.ok ? await res.json() : [];
+    reels = [...data, ...SEED_REELS];
+  } catch (_) {
+    reels = [...SEED_REELS];
+  }
+  renderFeed();
+}
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+function renderFeed() {
+  const container = document.getElementById('feed-container');
+  document.getElementById('reel-count').textContent = `${reels.length} reel${reels.length !== 1 ? 's' : ''}`;
+
+  const total    = reels.filter(r => r.analysis).length;
+  const deepfake = reels.filter(r => r.analysis?.is_deepfake).length;
+  document.getElementById('stat-total').textContent    = total;
+  document.getElementById('stat-deepfake').textContent = deepfake;
+
+  if (!reels.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📭</div>
+        <div class="empty-text">No reels yet. Click <b>Add Reel</b> to upload one.</div>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = reels.map((r, i) => buildCard(r, i)).join('');
+}
+
+function buildCard(reel, idx) {
+  const a = reel.analysis;
+  const badgeHtml = a
+    ? `<span class="verdict-badge ${verdictClass(a)}">${a.verdict_emoji} ${a.verdict}</span>`
+    : `<span class="verdict-badge verdict-pending">⏳ Not analyzed</span>`;
+
+  const videoHtml = reel.video_url
+    ? `<div class="video-wrapper">
+         <video class="card-video" src="${API}${reel.video_url}" controls playsinline preload="metadata"></video>
+         ${a?.is_deepfake ? '<div class="deepfake-banner">⛔ DEEPFAKE DETECTED — Pipeline Aborted</div>' : ''}
+       </div>`
+    : `<div style="height:180px;background:linear-gradient(135deg,#1a1a2e,#16213e);
+         display:flex;align-items:center;justify-content:center;font-size:3rem;">
+         🎬
+       </div>`;
+
+  const commentsHtml = reel.comments.slice(0, 3).map(c => `
+    <div class="comment-item">
+      <div class="comment-avatar">${c[0]?.toUpperCase() || '?'}</div>
+      <div><span class="comment-author">user_${Math.floor(Math.random()*9999)}</span>
+      <span class="comment-text">${escHtml(c)}</span></div>
+    </div>`).join('');
+
+  const scorePanel = a ? buildScorePanel(a) : '';
+
+  return `
+    <div class="reel-card" id="card-${reel.id}">
+      <div class="card-header">
+        <div class="avatar">${reel.username[0]?.toUpperCase() || '?'}</div>
+        <div class="card-meta">
+          <div class="card-username">${escHtml(reel.username)}</div>
+          <div class="card-time">${reel.timestamp}</div>
+        </div>
+        ${badgeHtml}
+      </div>
+
+      ${videoHtml}
+
+      <div class="card-caption">
+        <span class="username">${escHtml(reel.username)}</span>
+        ${escHtml(reel.caption)}
+      </div>
+
+      <div class="engagement-row">
+        <div class="eng-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+          <strong>${fmtNum(reel.followers)}</strong> followers
+        </div>
+        <div class="eng-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+          </svg>
+          <strong>${fmtNum(reel.likes)}</strong> likes
+        </div>
+        <div class="eng-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          <strong>${fmtNum(reel.num_comments)}</strong> comments
+        </div>
+      </div>
+
+      <hr class="card-divider" />
+
+      <div class="comment-list">${commentsHtml}</div>
+
+      <div class="card-footer">
+        ${scorePanel ? scorePanel : `
+          <button class="analyze-btn" id="btn-${reel.id}" onclick="analyzeReel('${reel.id}', ${idx})">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            Analyze Credibility
+          </button>
+        `}
+      </div>
+    </div>`;
+}
+
+function buildScorePanel(a) {
+  const pct     = Math.round(a.final_score * 100);
+  const fillW   = pct + '%';
+  const isDF    = a.is_deepfake;
+
+  return `
+    <div class="score-panel">
+      ${isDF ? `
+        <div style="text-align:center;padding:12px 0;">
+          <div style="font-size:2rem;margin-bottom:4px;">⛔</div>
+          <div style="font-weight:800;font-size:1.1rem;color:var(--red);">DEEPFAKE BLOCKED</div>
+          <div style="font-size:0.78rem;color:var(--muted);margin-top:4px;">
+            MesoNet detected ${Math.round(a.deepfake_prob*100)}% deepfake probability
+          </div>
+        </div>` : `
+        <div class="score-row">
+          <span class="score-label">🎥 Video + Audio Score</span>
+          <span class="score-val">${(a.video_audio_score||0).toFixed(4)}</span>
+        </div>
+        <div class="score-row">
+          <span class="score-label">💬 Comments + Engagement</span>
+          <span class="score-val">${(a.comments_eng_score||0).toFixed(4)}</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width:${fillW}"></div>
+        </div>
+        <div class="score-axis">
+          <span>SCAM</span><span>0.3</span><span>0.5</span><span>0.7</span><span>REAL</span>
+        </div>
+        <div class="final-verdict-row">
+          <div>
+            <div style="font-size:0.72rem;color:var(--muted);margin-bottom:2px;">Final Credibility Score</div>
+            <div class="final-score-num">${pct}%</div>
+          </div>
+          <span class="verdict-badge ${verdictClass(a)}">${a.verdict_emoji} ${a.verdict}</span>
+        </div>
+      `}
+    </div>`;
+}
+
+function verdictClass(a) {
+  if (!a) return 'verdict-pending';
+  if (a.is_deepfake)        return 'verdict-deepfake';
+  if (a.verdict === 'REAL') return 'verdict-real';
+  if (a.verdict === 'SCAM') return 'verdict-scam';
+  if (a.verdict === 'LIKELY SCAM') return 'verdict-likely';
+  return 'verdict-uncertain';
+}
+
+// ── ANALYZE (seed reels don't have a video — show inline form) ────────────────
+async function analyzeReel(id, idx) {
+  const reel = reels[idx];
+
+  // Seed reels (no video_url) — we can't analyze without a video
+  if (!reel.video_url) {
+    toast('This is a demo reel — upload a real video via Add Reel to analyze.', 'info');
+    return;
+  }
+
+  const btn = document.getElementById(`btn-${id}`);
+  btn.disabled = true;
+  btn.innerHTML = `<div class="spinner"></div> Analyzing…`;
+
+  try {
+    // Trigger re-analysis via a PATCH-style refresh (reel already on server)
+    toast('Video is already analyzed — see score above.', 'info');
+    showScore(id, reel.analysis);
+  } catch (e) {
+    toast('Analysis failed: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.innerHTML = `🛡 Analyze Credibility`;
+  }
+}
+
+function showScore(id, analysis) {
+  const footer = document.querySelector(`#card-${id} .card-footer`);
+  if (footer) {
+    footer.innerHTML = buildScorePanel(analysis);
+
+    // Animate progress bar
+    requestAnimationFrame(() => {
+      const fill = footer.querySelector('.progress-fill');
+      if (fill) {
+        const target = fill.style.width;
+        fill.style.width = '0%';
+        requestAnimationFrame(() => { fill.style.width = target; });
+      }
+    });
+  }
+}
+
+// ── MODAL ─────────────────────────────────────────────────────────────────────
+function openModal() {
+  document.getElementById('modal-overlay').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+}
+function closeModalOutside(e) {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+}
+
+// ── COMMENT FIELDS ────────────────────────────────────────────────────────────
+function addCommentField() {
+  const container = document.getElementById('comment-inputs');
+  if (container.children.length >= 10) return;
+  const n   = container.children.length + 1;
+  const inp = document.createElement('input');
+  inp.type        = 'text';
+  inp.className   = 'form-input';
+  inp.placeholder = `Comment ${n}…`;
+  inp.dataset.commentIndex = n;
+  container.appendChild(inp);
+}
+
+// ── FILE DROP ─────────────────────────────────────────────────────────────────
+function handleFileSelect(e) {
+  selectedFile = e.target.files[0];
+  updateDropLabel();
+}
+function handleDragOver(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.add('dragover');
+}
+function handleDragLeave() {
+  document.getElementById('drop-zone').classList.remove('dragover');
+}
+function handleDrop(e) {
+  e.preventDefault();
+  handleDragLeave();
+  selectedFile = e.dataTransfer.files[0];
+  updateDropLabel();
+}
+function updateDropLabel() {
+  document.getElementById('drop-filename').textContent =
+    selectedFile ? `✅ ${selectedFile.name}` : '';
+}
+
+// ── SUBMIT ────────────────────────────────────────────────────────────────────
+async function submitReel(e) {
+  e.preventDefault();
+
+  if (!selectedFile) { toast('Please select a video file.', 'error'); return; }
+
+  const comments = Array.from(
+    document.querySelectorAll('#comment-inputs .form-input')
+  ).map(i => i.value.trim()).filter(Boolean);
+
+  const fd = new FormData();
+  fd.append('video',        selectedFile);
+  fd.append('username',     document.getElementById('inp-username').value.trim());
+  fd.append('caption',      document.getElementById('inp-caption').value.trim());
+  fd.append('followers',    document.getElementById('inp-followers').value || '0');
+  fd.append('likes',        document.getElementById('inp-likes').value || '0');
+  fd.append('num_comments', document.getElementById('inp-num-comments').value || '0');
+  fd.append('comments',     JSON.stringify(comments));
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = `<div class="spinner"></div> Uploading & Analyzing…`;
+
+  try {
+    const res  = await fetch(`${API}/api/analyze`, { method: 'POST', body: fd });
+    if (!res.ok) throw new Error(await res.text());
+    const reel = await res.json();
+
+    closeModal();
+    resetForm();
+    toast(`✅ Analysis complete — ${reel.analysis.verdict_emoji} ${reel.analysis.verdict}`, 'success');
+
+    // Prepend to feed
+    reels.unshift(reel);
+    renderFeed();
+
+    // Animate score
+    setTimeout(() => {
+      const fill = document.querySelector(`#card-${reel.id} .progress-fill`);
+      if (fill) {
+        const target = fill.style.width;
+        fill.style.width = '0%';
+        requestAnimationFrame(() => { fill.style.width = target; });
+      }
+    }, 100);
+
+  } catch (err) {
+    toast('Error: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Upload & Scan`;
+  }
+}
+
+function resetForm() {
+  document.getElementById('add-reel-form').reset();
+  document.getElementById('drop-filename').textContent = '';
+  document.getElementById('comment-inputs').innerHTML  = '';
+  selectedFile = null;
+  addCommentField(); addCommentField(); addCommentField();
+}
+
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+// ── UTILS ─────────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtNum(n) {
+  if (n >= 1_000_000) return (n/1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000)     return (n/1_000).toFixed(1) + 'K';
+  return String(n);
+}
+</script>
+</body>
+</html>
