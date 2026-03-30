@@ -89,5 +89,5 @@ if __name__ == "__main__":
    "Fantastic",
    "Fake",
    ]
-result = analyze_comments_bert(comments)
-print(result)
+   result = analyze_comments_bert(comments)
+   print(result)

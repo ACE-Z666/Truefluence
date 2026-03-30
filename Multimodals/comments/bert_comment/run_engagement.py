@@ -1,5 +1,9 @@
 import torch
 from torch import nn
+import os
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+model_path = os.path.join(script_dir, "..", "models", "engagement_mlp.pt")
 
 # IMPORTANT: model structure must EXACTLY match training
 model = nn.Sequential(
@@ -11,7 +15,7 @@ model = nn.Sequential(
     nn.Sigmoid()
 )
 
-model.load_state_dict(torch.load("models/engagement_mlp.pt"))
+model.load_state_dict(torch.load(model_path))
 model.eval()
 
 def analyze_engagement(followers, likes, comments):
