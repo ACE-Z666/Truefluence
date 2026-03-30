@@ -1,225 +1,111 @@
-# TrueFluence — Multimodal Scam Detection System
+# TrueFluence — Comprehensive Multimodal Scam & Deepfake Detection Platform
 
-An AI system that combines visual and audio analysis to detect scam videos using temporal analysis, voice feature extraction, and a phased fusion training strategy.
+TrueFluence is a full-stack AI platform designed to detect fraudulent influencer campaigns, deepfakes, and scam videos. It evaluates content authenticity by fusing visual quality, audio consistency, deepfake heuristics, and NLP-driven engagement analysis. 
 
----
-
-## 🚀 Key Features
-
-### Visual Analysis
-- **MobileNetV2 Backbone**: Frozen ImageNet-pretrained feature extraction (1280-dim)
-- **Quality Assessment Head**: Multi-layer MLP scoring production quality per frame
-- **Temporal LSTM**: Bidirectional 2-layer LSTM (hidden=256) over frame sequences
-- **Temporal Self-Attention**: Learns which frames are most important (visual only)
-- **Temporal Classifier**: Final LSTM → score pipeline
-
-### Audio Analysis
-- **128-dim Feature Vector**: MFCCs (80) + Chroma (24) + Spectral (6) + RMS (2) + Tempo (1) + Mel Bands (15)
-- **Pause Pattern Analysis**: Voice authenticity via ffmpeg → wav → librosa pipeline
-
-### Fusion
-- **MLP Fusion Network**: Concatenates visual (135-dim) + audio (135-dim) → 270-dim → dense layers → final score
-- **No-Audio Fallback**: Videos without audio use `audio_vector = zeros(130)` → score = 0.0
-- **Fusion is concatenation-based MLP**
-
-### Attention Clarification
-| Component | Type | Input |
-|---|---|---|
-| `temporal_attention` | Self-attention over time | Visual frames only |
-| `fusion_network` | MLP (concatenation) | Visual + Audio |
+The platform consists of a mobile app, web dashboard, backend API, and a robust Multimodal AI engine.
 
 ---
 
-## 📁 Project Structure
+## 🏗️ Project Architecture
 
-```
-Multimodals/
-├── visual_engine.py          # MobileNetV2 backbone, LSTM, attention, fusion
-├── audio_engine.py           # AudioFeatureExtractor + AdvancedAudioAnalyzer
-├── train.py                  # 4-phase sequential training orchestrator
-├── test.py                   # Inference pipeline + report generation
-├── requirements.txt          # All dependencies
-├── setup_project.py          # Project initialization
-├── dataset/
-│   ├── real_videos/          # Legitimate video samples (label=1)
-│   ├── scam_videos/          # Scam video samples     (label=0)
-│   └── processed_frames/     # Cached frame extractions
-└── models/
-    └── weights/
-        ├── best_visual_head.pth      # Phase 1 best
-        ├── best_visual_temporal.pth  # Phase 2 best
-        ├── best_audio_head.pth       # Phase 3 best
-        ├── best_fusion.pth           # Phase 4 best
-        ├── best_model.pth            # Overall best (all components)
-        └── final_model.pth           # Final epoch snapshot
-```
+* **`Multimodals/`** — The Core AI Engine (PyTorch, Transformers, MesoNet)
+* **`MobileApp/`** — React Native (Expo) mobile application featuring an Instagram-like video feed
+* **`Frontened/`** — Web-based user interface dashboard
+* **`Backend/`** — Flask API connecting the mobile/web interfaces to the AI engine
 
 ---
 
-## 🛠️ Installation
+## 🧠 The AI Pipeline (Multimodals)
+
+The TrueFluence Multimodal engine processes videos through a strict **5-Step Sequential Pipeline** to calculate a final "Trust Score" (0.0 to 1.0).
+
+### 1. MesoNet Deepfake Gate 🔍
+* **Model**: Meso-4 (MesoNet architecture for Deepfake Detection)
+* **Function**: Extracts frames and calculates a deepfake probability.
+* **Gate Rule**: If the deepfake threshold exceeds **80%**, the pipeline **aborts immediately** and outputs a final score of `0.0` (⛔ DEEPFAKE).
+
+### 2. Video Analysis Engine 🎥
+* **MobileNetV2 Backbone**: Frozen ImageNet-pretrained feature extraction.
+* **Quality Assessment Head**: Multi-layer MLP scoring video production quality per frame.
+* **Temporal LSTM & Attention**: Bidirectional 2-layer LSTM and self-attention mechanism evaluating frame sequences over time.
+
+### 3. Audio Analysis Engine 🎵
+* **Feature Extraction**: 128-dim vectors combining MFCCs, Chroma, Spectral, RMS, and Mel Bands.
+* **VGGish & Pattern Analysis**: Evaluates voice authenticity, pause anomalies, and audio-visual consistency.
+
+### 4. Video + Audio Fusion 🔗
+* **Weight**: Contributes **40%** to the final overarching score.
+* **Architecture**: Concatenation-based MLP merging 135-dim visual and audio vectors. (Defaults to a penalty if the video lacks an audio track).
+
+### 5. Comments & Engagement Engine 💬
+* **Weight**: Contributes **60%** to the final overarching score (as social proof is a massive indicator of scam campaigns).
+* **NLP (BERT)**: Uses `bert-base-uncased` from Hugging Face Transformers to assess comment sentiment, detecting bot rings and warnings from real users.
+* **Engagement MLP**: Custom neural network weighing followers, likes, and comment volume ratios.
+* **Dynamic Integration**: Automatically pulls live engagement data by reading a matching `<video_name>.json` file during testing.
+
+---
+
+## 📊 Verdict Confidence Zones
+
+| Score Range | Verdict | Emoji | Action Required |
+|---|---|---|---|
+| 0.0 – 0.3 | **SCAM / DEEPFAKE** | 🔴 | High alert. Immediate takedown. |
+| 0.3 – 0.5 | **LIKELY SCAM** | 🟠 | Highly suspicious. |
+| 0.5 – 0.7 | **LIKELY REAL** | 🟡 | Borderline content. |
+| 0.7 – 1.0 | **REAL** | 🟢 | Safe and authentic. |
+
+---
+
+## 🛠️ Installation & Setup
+
+### AI Engine (Multimodals) Setup
 
 ```bash
 cd Multimodals
+# 1. Provide a virtual environment
+python -m venv .venv
+.venv\Scripts\activate
+
+# 2. Install core ML requirements
 pip install -r requirements.txt
+
+# 3. Ensure Transformers is installed (Required for Comments Engine)
+pip install transformers
+
+# 4. Initialize directories and download required MesoNet weights
 python setup_project.py
 ```
 
 ---
 
-## 📦 Requirements
-
-```
-torch, torchvision, torchaudio
-opencv-python
-scikit-learn
-pandas
-numpy
-librosa
-scipy
-tqdm
-imageio-ffmpeg
-resampy
-soundfile
-audioread
-numba
-```
-
-> ⚠️ `moviepy` is listed in `requirements.txt` but is **not used** in the current pipeline. All audio extraction uses `imageio-ffmpeg` directly.
-
----
-
 ## 🎯 Usage
 
-### Training
+### 1. Testing Videos
+Place your target test videos in `Multimodals/Test_Dataset/`. Optionally, provide a `.json` file with the exact same name (e.g., `test_vid1.json`) containing engagement data:
+```json
+{
+  "followers": 50000,
+  "likes": 5200,
+  "comments": ["Amazing quality!", "Is this a scam?", "Not working."]
+}
+```
 
+Run the pipeline:
+```bash
+cd Multimodals
+python test.py
+```
+*Results will print beautifully in your terminal and save to `results.txt` and `results.json`.*
+
+### 2. Training the Core Engine
+The visual and audio systems are trained sequentially across 4 phases to prevent catastrophic forgetting. Wait until one phase finishes before the next begins.
 ```bash
 python train.py
 ```
-
-Place videos before running:
-- Real videos → `dataset/real_videos/`
-- Scam videos → `dataset/scam_videos/`
-
-Supported formats: `.mp4`, `.avi`, `.mov`, `.mkv`
-
-### Testing
-
-```bash
-python test.py
-```
-
-Results saved to:
-- `Test_Dataset/results.txt`
-- `Test_Dataset/results.json`
-
-### Programmatic
-
-```python
-from visual_engine import VisualQualityHead
-from audio_engine  import AdvancedAudioAnalyzer
-from train         import AudioClassificationHead
-import torch
-
-device       = torch.device('cpu')
-visual_model = VisualQualityHead().to(device)
-audio_head   = AudioClassificationHead(dropout=0.3).to(device)
-
-ckpt = torch.load('models/weights/best_model.pth', map_location=device, weights_only=True)
-visual_model.head.load_state_dict(ckpt['head'])
-visual_model.temporal_lstm.load_state_dict(ckpt['temporal_lstm'])
-visual_model.temporal_attention.load_state_dict(ckpt['temporal_attention'])
-visual_model.temporal_classifier.load_state_dict(ckpt['temporal_classifier'])
-visual_model.fusion_network.load_state_dict(ckpt['fusion_network'])
-audio_head.load_state_dict(ckpt['audio_head'])
-```
-
----
-
-## 🧠 Training Architecture — 4-Phase Sequential
-
-Each phase freezes all previously trained components and trains only the current target. This prevents catastrophic forgetting on small datasets.
-
-```
-Phase 1 — Visual Quality Head
-  Trains  : model.head
-  Freezes : backbone, temporal_lstm, temporal_attention,
-            temporal_classifier, fusion_network
-  Input   : (N, 1280) backbone vectors → mean logit
-  Loss    : BCEWithLogitsLoss(pos_weight)
-
-Phase 2 — Visual Temporal (LSTM + Attention)
-  Trains  : temporal_lstm, temporal_attention, temporal_classifier
-  Freezes : backbone, head (Phase 1), fusion_network
-  Input   : (1, N, 3, 224, 224) frame sequence
-  Loss    : BCEWithLogitsLoss(pos_weight)
-
-Phase 3 — Audio Classification Head
-  Trains  : AudioClassificationHead (128 → 64 → 1)
-  Freezes : ALL visual components, VGGish (always frozen)
-  Input   : 128-dim audio feature vector
-  Fallback: No audio → score = 0.0, skip gradient update
-  Loss    : BCEWithLogitsLoss(pos_weight)
-
-Phase 4 — Fusion Network
-  Trains  : model.fusion_network
-  Freezes : ALL previous components
-  Input   : visual_vec (135-dim) + audio_padded (135-dim)
-  Loss    : BCEWithLogitsLoss(pos_weight)
-```
-
-### Key Training Decisions
-
-| Setting | Value | Reason |
-|---|---|---|
-| `max_epochs_per_phase` | 5 | Small dataset (~15 videos) |
-| `early_stop_patience` | 5 | More chances on tiny val set |
-| `val_split` | 0.2 | Stratified 80/20 |
-| `audio_dropout` | 0.5 | Reduce overfitting |
-| `no_audio_score` | 0.0 | Conservative: no audio = suspicious |
-| `pos_weight` | `num_real / num_scam` | Auto-adapts to class imbalance |
-
----
-
-## 📊 Verdict Zones
-
-| Score Range | Verdict | Emoji |
-|---|---|---|
-| 0.0 – 0.3 | SCAM | 🔴 |
-| 0.3 – 0.5 | LIKELY SCAM | 🟠 |
-| 0.5 – 0.7 | UNCERTAIN | 🟡 |
-| 0.7 – 1.0 | REAL | 🟢 |
-
----
-
-## 📋 Example Output
-
-```
-VIDEO 1: test_vid1.mp4
------------------------------------------------------------------
-  Visual Head Score    : 0.5005
-  Temporal LSTM Score  : 0.5331
-
-  Frame Scores:
-    Frame 01           : 0.4636
-    Frame 07           : 0.8450
-    Frame 08           : 0.7128
-
-  Has Audio            : True
-  Audio Head Score     : 0.5419
-  Pause Pattern Score  : 0.5867
-  Consistency Score    : 0.5893
-  Fusion Score         : 0.5138
-
-  FINAL SCORE          : 0.5206
-  VERDICT              : 🟡 UNCERTAIN (Borderline)
-  Processing Time      : 14.75s
-```
+*(Ensure `dataset/real_videos/` and `dataset/scam_videos/` are populated prior to training).*
 
 ---
 
 ## ⚠️ Known Limitations
-
-- Trained on small dataset (~15 videos) — generalization is limited
-- Cross-modal attention is **not implemented** due to low system resources
-- Fusion is using MLP concatenation
-- No data augmentation currently applied during training
+* **Small Dataset Dependence**: The visual/audio components were base-trained on a smaller dataset; generalization may vary on unseen environments.
+* **Transformers Requirement**: The Comments Engine will silently fall back to a `0.5` neutral score if `transformers` is not installed properly in your environment.

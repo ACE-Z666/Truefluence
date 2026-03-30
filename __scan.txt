@@ -1,0 +1,62 @@
+[F] .gitattributes (66b)
+[F] .gitignore (2472b)
+[D] Backend/
+[F] LICENSE (1092b)
+[D] MobileApp/
+[D] Multimodals/
+  [D] Test_Dataset/
+    [F] results.json (1835b)
+    [F] results.txt (1488b)
+    [F] test_vid1.mp4 (11717352b)
+  [F] audio_engine.py (10690b)
+  [D] comments/
+    [D] bert_comment/
+      [F] comments.csv (7575b)
+      [F] engagement.csv (696b)
+      [F] run_bert_comments.py (2816b)
+      [F] run_engagement.py (675b)
+      [F] test.py (362b)
+      [F] train_bert_comments.py (3385b)
+      [F] train_engagement_mlp.py (932b)
+    [D] models/
+      [F] bert_comment_head.pt (438405715b)
+      [F] comment_model.pkl (1834b)
+      [F] engagement_mlp.pt (5801b)
+    [D] modules/
+      [F] __init__.py (0b)
+  [D] dataset/
+    [D] processed_frames/
+    [D] real_videos/
+      [F] Video-198.mp4 (14192690b)
+      [F] Video-245.mp4 (3732368b)
+      [F] Video-35.mp4 (4467601b)
+      [F] Video-41.mp4 (5224322b)
+      [F] Video-470.mp4 (6412205b)
+      [F] Video-51.mp4 (16213324b)
+      [F] Video-630.mp4 (9186596b)
+      [F] Video-933.mp4 (9779417b)
+    [D] scam_videos/
+      [F] Video-118.mp4 (2176408b)
+      [F] Video-168.mp4 (6397830b)
+      [F] Video-353.mp4 (1726288b)
+      [F] Video-545.mp4 (3527522b)
+      [F] Video-61.mp4 (5081823b)
+      [F] Video-788.mp4 (2045825b)
+      [F] Video-911.mp4 (5289958b)
+  [F] mesonet.py (17521b)
+  [D] models/
+    [D] weights/
+      [F] best_audio_head.pth (36013b)
+      [F] best_fusion.pth (175237b)
+      [F] best_model.pth (22548213b)
+      [F] best_visual_head.pth (2899483b)
+      [F] best_visual_temporal.pth (19441889b)
+      [F] final_model.pth (22548264b)
+      [F] meso4_DF.pth (122153b)
+  [F] requirements.txt (217b)
+  [F] setup_project.py (1293b)
+  [F] test.py (38551b)
+  [F] train.py (50683b)
+  [F] training_data.csv (148b)
+  [F] visual_engine.py (29491b)
+[F] README.md (6784b)
