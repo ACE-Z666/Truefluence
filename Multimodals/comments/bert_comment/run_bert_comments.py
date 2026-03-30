@@ -6,8 +6,6 @@ from torch import nn
 
 # Get the directory of this script
 script_dir = os.path.dirname(os.path.abspath(__file__))
-model_path = os.path.join(script_dir, "..", "models", "bert_comment_head.pt")
-model.load_state_dict(torch.load(model_path))
 
 # -------- Model Definition (same as training) --------
 class BERTCommentModel(nn.Module):
@@ -91,5 +89,5 @@ if __name__ == "__main__":
    "Fantastic",
    "Fake",
    ]
-result = analyze_comments_bert(comments)
-print(result)
+   result = analyze_comments_bert(comments)
+   print(result)

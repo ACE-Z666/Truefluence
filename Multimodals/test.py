@@ -109,6 +109,7 @@ def load_models(device):
         meso_model    : Meso4 | None
     """
     # ── TrueFluence main model ─────────────────────────────────────────────
+
     print(f"\n  Loading TrueFluence weights from:")
     print(f"  {CONFIG['weights_path']}")
 
@@ -229,6 +230,7 @@ def analyze_video(video_path, visual_model, audio_head, audio_analyzer,
         # ══════════════════════════════════════════════════════════════════
         # STEP 1 — MesoNet Deepfake Gate
         # ══════════════════════════════════════════════════════════════════
+
         print(f"\n  [MesoNet] Screening for deepfakes …")
 
         meso_result = screen_for_deepfake(
@@ -260,6 +262,7 @@ def analyze_video(video_path, visual_model, audio_head, audio_analyzer,
         # ══════════════════════════════════════════════════════════════════
         # STEPS 2–4 — Video + Audio + Fusion
         # ══════════════════════════════════════════════════════════════════
+
         with torch.no_grad():
 
             # ── STEP 2 : VIDEO ENGINE ────────────────────────────────────
@@ -328,6 +331,7 @@ def analyze_video(video_path, visual_model, audio_head, audio_analyzer,
         # ══════════════════════════════════════════════════════════════════
         # STEP 5 — Comments + Engagement Engine
         # ══════════════════════════════════════════════════════════════════
+
         try:
             import sys as _sys
             import os as _os
@@ -335,21 +339,38 @@ def analyze_video(video_path, visual_model, audio_head, audio_analyzer,
             from bert_comment.run_bert_comments import analyze_comments_bert
             from bert_comment.run_engagement    import analyze_engagement
 
-            _comments_list  = [
-                "Amazing quality for the price",
-                "Very happy with the food",
-                "Average",
-                "Worth it",
-                "nice Food bro",
-                "Fantastic"
-            ] 
-            
-            # Using realistic high engagement metrics based on test.py (real → HIGH)
-            _followers      = 50000       
-            _likes          = 5200         
-            _num_comments   = 600           
+            import json as _json
+
+            # Try to load real data from a JSON file matching the video name
+            _video_dir = _os.path.dirname(video_path)
+            _video_base = _os.path.splitext(_os.path.basename(video_path))[0]
+            _json_data_path = _os.path.join(_video_dir, f"{_video_base}.json")
+
+            if _os.path.exists(_json_data_path):
+                with open(_json_data_path, 'r', encoding='utf-8') as f:
+                    _video_data = _json.load(f)
+                _comments_list = _video_data.get('comments', [])
+                _followers     = _video_data.get('followers', 50000)
+                _likes         = _video_data.get('likes', 5200)
+                _num_comments  = _video_data.get('num_comments', len(_comments_list) if _comments_list else 600)
+                # print(f"  [Comments] Loaded engagement data from {_video_base}.json")
+            else:
+                _comments_list  = [
+                    "Amazing quality for the price",
+                    "Very happy with the food",
+                    "Average",
+                    "Bad",
+                    "nice Food bro",
+                    "Fantastic"
+                ] 
+                # Using realistic high engagement metrics based on test.py (real → HIGH)
+                _followers      = 50000       
+                _likes          = 5200         
+                _num_comments   = 600           
             
             _eng_score = analyze_engagement(_followers, _likes, _num_comments)
+            _comment_result = analyze_comments_bert(_comments_list)
+            _comment_score = _comment_result.get('comment_authenticity_score', 0.5)
             comments_eng_score = round(0.5 * _comment_score + 0.5 * _eng_score, 4)
 
         except Exception as _ce:
@@ -359,6 +380,7 @@ def analyze_video(video_path, visual_model, audio_head, audio_analyzer,
         # ══════════════════════════════════════════════════════════════════
         # FINAL SCORE  =  40 % Video+Audio  +  60 % Comments+Engagement
         # ══════════════════════════════════════════════════════════════════
+
         final_score = (
             CONFIG['w_video_audio']  * video_audio_score +
             CONFIG['w_comments_eng'] * comments_eng_score
@@ -395,6 +417,7 @@ def print_report(result, index, total):
         return
 
     # ── MESONET DEEPFAKE GATE ──────────────────────────────────────────────
+
     print(f"\n  ── 🔍 DEEPFAKE GATE (MesoNet Meso-4) ───────────────────")
 
     if result['meso_available']:
@@ -417,6 +440,7 @@ def print_report(result, index, total):
         print(f"     Run:  python mesonet.py  to download weights")
 
     # ── VISUAL SCORES ─────────────────────────────────────────────────────
+
     print(f"\n  ── 🎥 VIDEO ENGINE ──────────────────────────────────────")
 
     v_emoji, v_label, _ = get_verdict(result['visual_head_score'])
@@ -433,6 +457,7 @@ def print_report(result, index, total):
         print(f"    Frame {i+1:02d} : [{bar}] {score:.4f}  {f_emoji}")
 
     # ── AUDIO SCORES ──────────────────────────────────────────────────────
+
     print(f"\n  ── 🎵 AUDIO ENGINE ──────────────────────────────────────")
 
     if result['has_audio']:
@@ -571,6 +596,7 @@ def save_report(all_results):
         f.write(txt_content)
 
     # ── JSON REPORT ───────────────────────────────────────────────────────
+
     json_data = {
         'timestamp'     : timestamp,
         'weights_used'  : CONFIG['weights_path'],
@@ -604,7 +630,6 @@ def save_report(all_results):
     print(f"     TXT  → {CONFIG['results_txt']}")
     print(f"     JSON → {CONFIG['results_json']}")
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # MAIN TEST FUNCTION
 # ─────────────────────────────────────────────────────────────────────────────
@@ -626,10 +651,12 @@ def test():
     total_start = time.time()
 
     # ── DEVICE ──────────────────────────────────────────────────────────────
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"\n  Device : {device}")
 
     # ── COLLECT TEST VIDEOS ──────────────────────────────────────────────────
+
     print(f"\n  Scanning : {CONFIG['test_dir']}")
 
     if not os.path.exists(CONFIG['test_dir']):
@@ -650,10 +677,12 @@ def test():
         print(f"    → {os.path.basename(v)}")
 
     # ── LOAD MODELS ──────────────────────────────────────────────────────────
+
     print(f"\n  Loading Models …")
     visual_model, audio_head, audio_analyzer, meso_model = load_models(device)
 
     # ── ANALYZE EACH VIDEO ───────────────────────────────────────────────────
+
     print(f"\n  Analyzing {len(test_videos)} video(s) …")
 
     all_results = []
@@ -671,6 +700,7 @@ def test():
         print_report(result, i, len(test_videos))
 
     # ── OVERALL SUMMARY ──────────────────────────────────────────────────────
+
     total_time = time.time() - total_start
 
     print("\n" + "═" * 65)
@@ -700,6 +730,7 @@ def test():
     print("═" * 65)
 
     # ── SAVE REPORT ──────────────────────────────────────────────────────────
+    
     save_report(all_results)
 
 
