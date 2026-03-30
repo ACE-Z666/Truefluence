@@ -1,7 +1,7 @@
 =================================================================
   TRUEFLUENCE — MULTIMODAL SCAM DETECTION
   Sequential Pipeline: MesoNet → Video → Audio → Comments+Engagement
-  Generated : 2026-03-30 21:08:44
+  Generated : 2026-03-30 21:12:45
 =================================================================
 
 VIDEO 1: test_vid1.mp4
@@ -41,7 +41,7 @@ VIDEO 1: test_vid1.mp4
   [Final]
   FINAL SCORE          : 0.7086
   VERDICT              : REAL (Confident Real)
-  Processing Time      : 19.7s
+  Processing Time      : 18.74s
 
 =================================================================
   SUMMARY
