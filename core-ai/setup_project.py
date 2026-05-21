@@ -13,6 +13,7 @@ def setup_project_structure():
         os.path.join(base_path, "models", "weights"),
     ]
     
+    
     # Create directories
     print("Creating directory structure...")
     for directory in directories:
