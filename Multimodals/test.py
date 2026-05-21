@@ -145,8 +145,7 @@ def load_models(device):
 
     print(f"  ✅ TrueFluence components loaded")
     print(f"     Checkpoint epoch : {ckpt.get('epoch',  'N/A')}")
-    print(f"     Best val_loss    : {ckpt.get('val_loss','N/A')}")
-    print(f"     Best val_acc     : {ckpt.get('val_acc', 'N/A')}")
+
 
     # ── MesoNet deepfake gate ──────────────────────────────────────────────
     print(f"\n  Loading MesoNet (Meso-4 DF) …")
@@ -161,35 +160,7 @@ def load_models(device):
 
 def analyze_video(video_path, visual_model, audio_head, audio_analyzer,
                   meso_model, device):
-    """
-    Full sequential analysis pipeline for a single video.
-
-    ╔══════════════════════════════════════════════════════════════════╗
-    ║  STEP 1 — MesoNet Deepfake Gate                                  ║
-    ║  Extract frames → Meso-4 → deepfake_prob per frame               ║
-    ║  If mean(deepfake_prob) ≥ 80%:                                   ║
-    ║      final_score = 0  →  DEEPFAKE  (pipeline STOPS here)         ║
-    ║  Else: continue ↓                                                 ║
-    ╠══════════════════════════════════════════════════════════════════╣
-    ║  STEP 2 — Video Engine                                            ║
-    ║  MobileNetV2 quality head  +  Temporal LSTM score                ║
-    ╠══════════════════════════════════════════════════════════════════╣
-    ║  STEP 3 — Audio Engine                                            ║
-    ║  VGGish  +  Pause patterns  +  Consistency score                  ║
-    ╠══════════════════════════════════════════════════════════════════╣
-    ║  STEP 4 — Video+Audio Fusion  (internal score)                    ║
-    ║  video_audio_score  =  weighted blend of steps 2+3               ║
-    ╠══════════════════════════════════════════════════════════════════╣
-    ║  STEP 5 — Comments + Engagement Engine  (placeholder / future)   ║
-    ║  comments_eng_score = 0.5 (neutral) if module not available      ║
-    ╠══════════════════════════════════════════════════════════════════╣
-    ║  FINAL SCORE  =  0.40 × video_audio  +  0.60 × comments_eng     ║
-    ╚══════════════════════════════════════════════════════════════════╝
-
-    Returns:
-        dict with all scores and metadata
-    """
-
+    
     result = {
         'video_path'            : video_path,
         'video_name'            : os.path.basename(video_path),
@@ -363,7 +334,7 @@ def analyze_video(video_path, visual_model, audio_head, audio_analyzer,
                     "nice Food bro",
                     "Fantastic"
                 ] 
-                # Using realistic high engagement metrics based on test.py (real → HIGH)
+                
                 _followers      = 50000       
                 _likes          = 5200         
                 _num_comments   = 600           
