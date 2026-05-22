@@ -7,21 +7,32 @@ TrueFluence is a full-stack, production-ready AI architecture designed to autono
 
 ## 📁 Directory Architecture
 
-TrueFluence adopts a decoupled, modular design to ensure scalable engineering habits and rapid deployment.
+TrueFluence adopts a decoupled, modular design to ensure scalable engineering habits, clean code separation, and rapid local or production deployment.
 
 ```text
 📦 TrueFluence
- ┣ 📂 Multimodals/    # Core AI Engine (PyTorch, Transformers, MesoNet)
- ┣ 📂 Backend/        # Flask API connecting interfaces to the AI engine
- ┣ 📂 Frontend/       # Web-based user interface dashboard
- ┗ 📂 MobileApp/      # React Native (Expo) app featuring an Instagram-like video feed
+ ┣ 📂 apps/                   # Client Applications
+ ┃ ┣ 📂 mobile-app/           # React Native (Expo) mobile app featuring an Instagram-like video feed
+ ┃ ┗ 📂 web-dashboard/        # Modern single-page HTML/CSS social credibility scanner and report viewer
+ ┣ 📂 core-ai/                # Core AI Engine (PyTorch, MesoNet, Transformers)
+ ┃ ┣ 📂 comments/             # BERT Comments Classifier & Engagement MLP training/inference modules
+ ┃ ┣ 📂 config/               # Pipeline configuration and parameters
+ ┃ ┣ 📂 src/                  # Pipeline engine core source modules (video, audio, MesoNet, NLP, fusion)
+ ┃ ┣ 📂 Test_Dataset/         # Test reels, inference reports (results.txt, results.json)
+ ┃ ┗ 📜 test_inference.py     # Main CLI test script to run end-to-end evaluation
+ ┃ ┗ 📜 train_pipeline.py     # Multi-phase sequential pipeline training harness
+ ┣ 📂 server/                 # Flask REST API backend connecting client interfaces to the AI engine
+ ┃ ┣ 📂 api/                  # API endpoints and route designs
+ ┃ ┣ 📂 uploads/              # Transient storage for uploaded video scans
+ ┃ ┗ 📜 app.py                # Main backend application runner serving both REST API and web-dashboard
+ ┗ 📂 Test_videos/            # Empty placeholder directory for additional user-provided test inputs
 ```
 
 ---
 
 ## 🏗️ Multimodal AI Pipeline (System Design)
 
-The core engine evaluates content via a strict **5-Step Sequential Pipeline** to calculate a final predictive "Trust Score" (0.0 to 1.0). 
+The core AI engine evaluates content via a strict **5-Step Sequential Pipeline** to calculate a final predictive "Trust Score" (0.0 to 1.0). 
 
 ```mermaid
 sequenceDiagram
@@ -46,26 +57,26 @@ sequenceDiagram
     end
 ```
 
-### 1. MesoNet Deepfake Gate 🔍
+### 1. MesoNet Deepfake Gate 🔍 (`core-ai/src/mesonet.py`)
 * **Architecture**: Meso-4 (MesoNet architecture for Deepfake Detection).
 * **Functionality**: Serves as a high-speed asynchronous inference gate extracting frames to calculate deepfake probability.
-* **Gate Rule**: If the deepfake threshold exceeds **80%**, the pipeline aborts immediately and outputs a final score of `0.0` (⛔ DEEPFAKE), preventing unnecessary compute downstream.
+* **Gate Rule**: If the deepfake fraction of frames exceeds **80%**, the pipeline aborts immediately and outputs a final score of `0.0` (⛔ DEEPFAKE), preventing unnecessary compute downstream.
 
-### 2. Video Analysis Engine 🎥
+### 2. Video Analysis Engine 🎥 (`core-ai/src/video_engine.py`)
 * **Backbone**: MobileNetV2 for frozen ImageNet-pretrained feature extraction.
 * **Quality Assessment**: Multi-layer MLP scoring video production quality per frame.
 * **Temporal Analysis**: Bidirectional 2-layer LSTM and self-attention mechanism evaluating frame sequences over time for semantic consistency.
 
-### 3. Audio Analysis Engine 🎵
+### 3. Audio Analysis Engine 🎵 (`core-ai/src/audio_engine.py`)
 * **Feature Extraction**: 128-dim vectors combining MFCCs, Chroma, Spectral, RMS, and Mel Bands.
 * **Pattern Analysis**: Utilizes VGGish embeddings to evaluate voice authenticity, pause anomalies, and audio-visual consistency.
 
-### 4. Multimodal Fusion Layer 🔗
-* **Weighting**: Contributes **40%** to the final overarching score.
+### 4. Multimodal Fusion Layer 🔗 (`core-ai/src/fusion_layer.py`)
+* **Weighting**: Contributes **40%** of the final overarching score.
 * **Architecture**: Concatenation-based MLP merging 135-dim visual and audio vectors. Defaults to an architectural penalty if the video lacks an audio track.
 
-### 5. Comments & Engagement Engine 💬
-* **Weighting**: Contributes **60%** to the final overarching score (capitalizing on social proof as a primary indicator of scam campaigns).
+### 5. Comments & Engagement Engine 💬 (`core-ai/src/nlp_engine.py` & `core-ai/comments/`)
+* **Weighting**: Contributes **60%** of the final overarching score (capitalizing on social proof as a primary indicator of scam campaigns).
 * **NLP (BERT)**: Deploys `bert-base-uncased` from Hugging Face Transformers to assess comment sentiment, detecting bot rings and real-user warnings.
 * **Engagement Analytics**: Custom neural network weighing followers, likes, and comment volume ratios. Automatically integrates live engagement data via a matching `<video_name>.json` file.
 
@@ -77,37 +88,33 @@ sequenceDiagram
 | :--- | :--- | :---: | :--- |
 | **0.0 – 0.3** | **SCAM / DEEPFAKE** | 🔴 | High alert. Immediate takedown required. |
 | **0.3 – 0.5** | **LIKELY SCAM** | 🟠 | Highly suspicious. Flag for manual review. |
-| **0.5 – 0.7** | **LIKELY REAL** | 🟡 | Borderline content. Monitor engagement. |
+| **0.5 – 0.7** | **UNCERTAIN** | 🟡 | Borderline content. Monitor engagement. |
 | **0.7 – 1.0** | **REAL** | 🟢 | Safe and authentic. |
 
 ---
 
 ## 🛠️ Quickstart & Local Deployment
 
-### AI Engine (Multimodals) Environment Setup
+### 1. AI Engine (`core-ai`) Setup
 
 ```bash
-cd Multimodals
+cd core-ai
 
-# 1. Provision an isolated virtual environment
+# Provision an isolated virtual environment
 python -m venv .venv
 
 # Activate environment (Windows)
 .venv\Scripts\activate
 
-# 2. Install core ML dependencies
+# Install core machine learning dependencies
 pip install -r requirements.txt
 
-# 3. Ensure Transformers is installed (Required for Comments Engine)
-pip install transformers
-
-# 4. Initialize architecture and download requisite MesoNet weights
+# Initialize project directory structure and populate dummy dataset
 python setup_project.py
 ```
 
-### Data Ingestion & Inference
-
-Place target test videos in `Multimodals/Test_Dataset/`. For social context inference, provide a matching `.json` file (e.g., `test_vid1.json`):
+#### Data Ingestion & Inference
+Place target test videos in `core-ai/Test_Dataset/`. For social context inference, optionally provide a matching `.json` file (e.g., `test_vid1.json`):
 
 ```json
 {
@@ -121,22 +128,57 @@ Place target test videos in `Multimodals/Test_Dataset/`. For social context infe
 }
 ```
 
-Execute the evaluation pipeline:
+Execute the command line evaluation pipeline:
+```bash
+python test_inference.py
+```
+> *Outputs are formatted in the terminal and serialized to `Test_Dataset/results.txt` and `Test_Dataset/results.json`.*
+
+#### Pipeline Training
+The visual and audio systems undergo sequential training across 4 phases to mitigate catastrophic forgetting.
+```bash
+python train_pipeline.py
+```
+> *Ensure `dataset/real_videos/` and `dataset/scam_videos/` are hydrated with training data prior to execution.*
+
+---
+
+### 2. Flask REST Backend (`server`) Setup
+
+The backend serves as the bridge between client apps and the underlying AI models. It also hosts the web dashboard statically.
 
 ```bash
-cd Multimodals
-python test.py
+cd server
+
+# Install backend dependencies (Flask, Flask-Cors)
+pip install -r requirements.txt
+
+# Start the server on port 5000
+python app.py
 ```
-> *Outputs are formatted in the terminal and serialized to `results.txt` and `results.json`.*
+> *The server will start listening at `http://localhost:5000`.*
 
-### Pipeline Training
+---
 
-The visual and audio systems undergo sequential training across 4 phases to mitigate catastrophic forgetting. Await the completion of each phase before proceeding.
+### 3. Client Dashboards & Apps (`apps`) Setup
 
-```bash
-python train.py
-```
-> *Ensure `dataset/real_videos/` and `dataset/scam_videos/` are hydrated with data prior to execution.*
+#### A. Web-Based Dashboard (`apps/web-dashboard`)
+* Fully responsive and interactive dashboard built in HTML, CSS, and vanilla JS.
+* Displays analyzed reels, provides real-time progress bars for each model bucket, and highlights deepfake blocks.
+* **Access**: Simply open `http://localhost:5000` in your web browser while the backend Flask server is running (it is served automatically!). Alternatively, you can open `apps/web-dashboard/index.html` directly in your browser.
+
+#### B. Mobile Application (`apps/mobile-app`)
+* Rich client mobile application built using React Native and Expo, featuring a video scroll feed and manual scanner.
+* Setup & Run:
+  ```bash
+  cd apps/mobile-app
+  
+  # Install node package dependencies
+  npm install
+  
+  # Start the Expo development server
+  npm start
+  ```
 
 ---
 
