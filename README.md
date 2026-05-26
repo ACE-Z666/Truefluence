@@ -34,28 +34,6 @@ TrueFluence adopts a decoupled, modular design to ensure scalable engineering ha
 
 The core AI engine evaluates content via a strict **5-Step Sequential Pipeline** to calculate a final predictive "Trust Score" (0.0 to 1.0). 
 
-```mermaid
-sequenceDiagram
-    participant Input as Video Input
-    participant Meso as 1. MesoNet Deepfake Gate
-    participant VisAud as 2/3. Audio & Visual Engines
-    participant Fusion as 4. Multimodal Fusion Layer
-    participant Context as 5. Engagement Engine (NLP)
-    participant Output as Final Verdict
-
-    Input->>Meso: Feed raw frames
-    Meso-->>Meso: Check deepfake threshold
-    alt Threshold > 80%
-        Meso->>Output: Abort (Score: 0.0 - DEEPFAKE)
-    else Authenticated
-        Meso->>VisAud: Proceed to Feature Extraction
-        VisAud->>Fusion: Forward visual & audio vectors
-        Fusion->>Output: Base Trust Score (40% Weight)
-        Input->>Context: Feed social metrics & comments
-        Context->>Output: Contextual Score (60% Weight)
-        Output-->>Output: Synthesize Final Trust Score
-    end
-```
 
 ### 1. MesoNet Deepfake Gate 🔍 (`core-ai/src/mesonet.py`)
 * **Architecture**: Meso-4 (MesoNet architecture for Deepfake Detection).
